@@ -1,0 +1,85 @@
+services:
+  backend_python:
+    build: ./backend_python
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - PYTHON_PORT=3003
+      - PYTHON_HOST=0.0.0.0
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend_python:/app
+    networks:
+      - alygen-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:3003/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - PYTHON_PORT=3003
+      - PYTHON_FASTAPI_URL=http://backend_python:3003
+      - PYTHON_SERVICE_URL=http://backend_python:3003
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - ./backend/data:/app/data
+      - ./backend/screenshots:/app/screenshots
+      - /app/node_modules
+    networks:
+      - alygen-network
+    depends_on:
+      backend_python:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3001/api/health/live', (r) => process.exit(r.statusCode === 200 ? 0 : 1))\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - VITE_API_URL=http://localhost:3001
+      - BACKEND_PROXY_URL=http://backend:3001
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - alygen-network
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+
+networks:
+  alygen-network:
+    driver: bridge

@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+dist/
+.cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.pkl
+venv/
+.venv/
+env/
+
+# Environment & Secrets
+.env
+*.env.local
+
+# Google credentials (NEVER commit)
+google-credentials.json
+
+# Logs
+logs/
+*.log
+startup.log
+
+# WhatsApp session cache
+.wwebjs_cache/
+.wwebjs_auth/
+
+# Debug & temp files
+temp/
+tmp/
+screenshots/
+# Local Database & State (NEVER commit)
+/data/
+backend/data/
+!frontend/src/data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.pkl
+
+# Sensitive credentials & secrets (NEVER commit)
+*client_secret*.json
+*credentials*.json
+*.pem
+*.key
+*.cert
+*.pfx
+
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Build artifacts
+build/
+coverage/
