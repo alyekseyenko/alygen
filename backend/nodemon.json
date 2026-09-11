@@ -1,0 +1,31 @@
+{
+  "ignore": [
+    "screenshots",
+    "screenshots/**",
+    "temp",
+    "temp/**",
+    "tmp",
+    "tmp/**",
+    "data",
+    "data/**",
+    ".wwebjs_cache",
+    ".wwebjs_cache/**",
+    ".wwebjs_auth",
+    ".wwebjs_auth/**",
+    "*.log",
+    "startup.log",
+    "email-preview.html",
+    "google-results-debug.html",
+    "sync-*.js"
+  ],
+  "ext": "js,mjs,cjs,json",
+  "watch": [
+    "server.js",
+    "services",
+    "routes",
+    "cron.js",
+    "quota-manager.js",
+    "analysis-queue.js",
+    "cache-manager.js"
+  ]
+}
