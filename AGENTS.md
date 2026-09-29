@@ -1,5 +1,7 @@
 # Alygen Multi-Agent AI System (AGENTS.md)
 
+**English reference (portfolio):** [docs/architecture/AGENTS.md](docs/architecture/AGENTS.md)
+
 O Alygen CRM utiliza uma arquitetura **Multi-Agent Orchestrator** para enriquecer a prospeção com inteligência profunda de mercado local.
 
 ## 👥 Agentes e Responsabilidades
@@ -38,7 +40,16 @@ A análise de inteligência de mercado (/agent/market-intel) segue um padrão de
 
 ---
 
-## 🛡️ Resiliência & Graceful Degradation (Failsafe)
-Se a pesquisa externa DuckDuckGo ou a Groq API sofrer interrupção:
-1. **conhecimento Interno:** O Estrategista recorre a heurísticas locais com base no setor e distrito para gerar análises factuais credíveis.
-2. **Uptime de 100%:** O sistema degrada graciosamente para insights estáticos predefinidos de alta relevância setorial em vez de quebrar e retornar erro HTTP 500.
+## Resiliência e fallback
+Se DuckDuckGo ou Groq falharem:
+1. Usar concorrentes internos do CRM (mesma cidade/setor, Q-Score ≥ 50).
+2. Fallback heurístico **sem nomes fictícios** — apenas recomendações setoriais em PT-PT.
+3. Nunca HTTP 500 por falha do agente; responder `{ success: false, error }` ou texto de fallback.
+
+## Runtime (2026)
+- **Motor único:** [backend_python/services/agent_orchestration.py](backend_python/services/agent_orchestration.py) em `PYTHON_FASTAPI_URL` (porta 3003).
+- **Dados:** Postgres local + pgvector (`docker compose up postgres`). Runtime Node usa [backend/db/local-client.js](backend/db/local-client.js), não Supabase.
+- **Contexto:** [backend_python/context/context_builder.py](backend_python/context/context_builder.py) + tabelas `documents` / `document_chunks` (migração 004).
+- **Prompts versionados:** [backend_python/prompts/](backend_python/prompts/).
+- **MCP:** servidor CRM em `npm run mcp` ([backend/mcp/server.js](backend/mcp/server.js)); allowlist em [backend_python/config/mcp_servers.json](backend_python/config/mcp_servers.json).
+- **Specs:** cada feature nova em [specs/](specs/) antes do código.

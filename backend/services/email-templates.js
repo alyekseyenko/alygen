@@ -1,4 +1,5 @@
 // 📧 TEMPLATES DE EMAIL ANTI-SPAM
+import { buildUnsubscribeUrl } from '../utils/unsubscribe-url.js';
 
 const SENDER_NAME = process.env.SENDER_NAME || 'Consultor Alygen';
 const SENDER_EMAIL = process.env.SENDER_EMAIL || process.env.SMTP_USER || 'contacto@alygen.com';
@@ -103,7 +104,7 @@ ${COMPANY_NAME} — Consultoria Digital & Estratégia Web
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 P.S.: Esta análise foi realizada para fins de diagnóstico e contacto B2B legítimo nos termos do RGPD (UE 2016/679).
-Caso pretenda cancelar comunicações futuras (opt-out), responda "Cancelar" ou aceda a: ${API_HOST}/api/unsubscribe?email=${encodeURIComponent(leadData.client_email || leadData.email || '')}`;
+Caso pretenda cancelar comunicações futuras (opt-out), responda "Cancelar" ou aceda a: ${buildUnsubscribeUrl(leadData.client_email || leadData.email || '')}`;
 }
 
 // Template para leads COM SITE (informativo com dados técnicos)
@@ -188,5 +189,5 @@ ${COMPANY_NAME} — Otimização Web & Marketing Digital
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 P.S.: Esta análise foi realizada para fins de diagnóstico e contacto B2B legítimo nos termos do RGPD (UE 2016/679).
-Caso pretenda cancelar comunicações futuras (opt-out), responda "Cancelar" ou aceda a: ${API_HOST}/api/unsubscribe?email=${encodeURIComponent(leadData.client_email || leadData.email || '')}`;
+Caso pretenda cancelar comunicações futuras (opt-out), responda "Cancelar" ou aceda a: ${buildUnsubscribeUrl(leadData.client_email || leadData.email || '')}`;
 }

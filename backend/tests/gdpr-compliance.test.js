@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { eraseLead, unsubscribeLead, cleanupDataRetention } from '../controllers/leads.controller.js';
 import { generateEmailTemplate } from '../services/email-template.js';
+import { createUnsubscribeToken } from '../utils/unsubscribe-token.js';
 
 describe('🛡️ RGPD / EU Compliance & Data Protection Suite', () => {
 
@@ -22,8 +23,9 @@ describe('🛡️ RGPD / EU Compliance & Data Protection Suite', () => {
     });
 
     it('should process unsubscribe for valid email (JSON response)', async () => {
+      const email = 'cliente@exemplo.pt';
       const req = {
-        query: { email: 'cliente@exemplo.pt' },
+        query: { email, token: createUnsubscribeToken(email) || undefined },
         body: {},
         accepts: vi.fn().mockReturnValue(false),
         method: 'GET'
@@ -43,15 +45,17 @@ describe('🛡️ RGPD / EU Compliance & Data Protection Suite', () => {
     });
 
     it('should return HTML confirmation page when browser navigates to unsubscribe', async () => {
+      const email = 'lead@empresa.pt';
       const req = {
-        query: { email: 'lead@empresa.pt' },
+        query: { email, token: createUnsubscribeToken(email) || undefined },
         body: {},
         accepts: vi.fn((type) => type === 'html'),
         method: 'GET'
       };
       const res = {
         status: vi.fn().mockReturnThis(),
-        send: vi.fn()
+        send: vi.fn(),
+        json: vi.fn(),
       };
 
       await unsubscribeLead(req, res);

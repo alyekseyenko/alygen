@@ -33,7 +33,7 @@ export function startFollowupCron() {
   cron.schedule('0 3 * * 0', async () => {
     console.log('🛡️ Cron RGPD: Limpando análises antigas (política de retenção)...');
     try {
-      const { deleteOldAnalyses } = await import('./services/supabase-service.js');
+      const { deleteOldAnalyses } = await import('./services/crm-data-service.js');
       const retentionDays = parseInt(process.env.DATA_RETENTION_DAYS || '365', 10);
       const res = await deleteOldAnalyses(retentionDays);
       console.log(`🛡️ Cron RGPD: ${res.deleted || 0} análises antigas removidas (retenção: ${retentionDays} dias).`);
@@ -80,13 +80,13 @@ async function processFollowup1() {
 
   console.log(`📬 Follow-up 1: ${sequences.length} email(s) potencialmente pendentes`);
   const { requestSequenceApproval } = await import('./services/telegram-service.js');
-  const { getAnalysisFromSupabase } = await import('./services/supabase-service.js');
+  const { getAnalysisByWebsite } = await import('./services/crm-data-service.js');
   
   for (const seq of sequences) {
     try {
       // 🛑 Verificar se o cliente tem Imunidade (Virou Cliente / Negociação)
       if (seq.website) {
-          const analysisRes = await getAnalysisFromSupabase(seq.website);
+          const analysisRes = await getAnalysisByWebsite(seq.website);
           if (analysisRes.success && analysisRes.data?.is_immune) {
               console.log(`🛡️ [IMUNIDADE] Abortando Follow-up D3 de ${seq.email}. Cliente Imune.`);
               import('./services/email-sequences.js').then(m => m.cancelSequence(seq.id));
@@ -108,13 +108,13 @@ async function processFollowup2() {
 
   console.log(`📬 Follow-up 2: ${sequences.length} email(s) potencialmente pendentes`);
   const { requestSequenceApproval } = await import('./services/telegram-service.js');
-  const { getAnalysisFromSupabase } = await import('./services/supabase-service.js');
+  const { getAnalysisByWebsite } = await import('./services/crm-data-service.js');
 
   for (const seq of sequences) {
     try {
       // 🛑 Verificar Imunidade
       if (seq.website) {
-          const analysisRes = await getAnalysisFromSupabase(seq.website);
+          const analysisRes = await getAnalysisByWebsite(seq.website);
           if (analysisRes.success && analysisRes.data?.is_immune) {
               console.log(`🛡️ [IMUNIDADE] Abortando Follow-up D7 de ${seq.email}. Cliente Imune.`);
               import('./services/email-sequences.js').then(m => m.cancelSequence(seq.id));

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { invokeGroqChat, invokeLlmJson, parseJsonFromLlm } from './llm-client.js';
 
 export async function analyzeSEO(url, htmlContent = null, groqApiKey = null) {
   try {
@@ -322,26 +323,30 @@ Analisa o negócio através deste conteúdo e gera um JSON ESTRITAMENTE VÁLIDO 
 O output TEM de ser apenas o JSON válido, sem qualquer texto markdown ou explicações antes ou depois. Responde SEMPRE EM PORTUGUÊS (PT-PT).
 `;
 
-    const response = await axios.post(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
+    const system = 'Consultor SEO estratégico em Portugal (PT-PT). Responda apenas com JSON válido.';
+    let result = null;
+    try {
+      result = await invokeLlmJson({
+        system,
+        user: prompt,
+        purpose: 'reasoning',
+        agentName: 'seo_strategic',
+        leadWebsite: url,
+        timeoutMs: 20_000,
+      });
+    } catch (gatewayErr) {
+      if (!groqApiKey) throw gatewayErr;
+      const { text } = await invokeGroqChat({
+        groqApiKey,
         model: 'llama-3.1-8b-instant',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
-        response_format: { type: 'json_object' }
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${groqApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 15000
-      }
-    );
+        responseFormat: { type: 'json_object' },
+        timeoutMs: 15_000,
+      });
+      result = parseJsonFromLlm(text);
+    }
 
-    const content = response.data.choices[0].message.content;
-    const result = JSON.parse(content);
-    
     return {
       success: true,
       userIntent: result.userIntent || '',
@@ -350,7 +355,7 @@ O output TEM de ser apenas o JSON válido, sem qualquer texto markdown ou explic
       strategicRecommendation: result.strategicRecommendation || ''
     };
   } catch (err) {
-    console.error('Groq AI SEO Analysis Error:', err.message);
+    console.error('AI SEO Analysis Error:', err.message);
     return { success: false, error: 'Falha na IA', userIntent: '', semanticKeywords: [], contentGap: '', strategicRecommendation: '' };
   }
 }

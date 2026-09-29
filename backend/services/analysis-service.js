@@ -1,116 +1,170 @@
 import { analyzeLead } from './index.js';
 import quotaManager from '../quota-manager.js';
-import { saveAnalysisToSupabase, getAnalysisFromSupabase, getAllAnalysesMeta } from './supabase-service.js';
-import { fetchLeads } from './sheets.js';
+import {
+  saveAnalysis,
+  getAnalysisByWebsite,
+  getCompetitiveLeadsMeta,
+} from './crm-data-service.js';
 import { generateMultiDeviceMockup } from './mockup-service.js';
 import { generateEmailTemplate } from './email-template.js';
 import { runAutomationsForLead } from './automation-engine.js';
+import { computeAuditDiff } from './audit-diff.js';
+import {
+  createAnalysisRun,
+  appendRunStep,
+  finishAnalysisRun,
+} from './analysis-runs-service.js';
+import { runMarketIntelAfterAudit } from './market-intel-post-audit.js';
+import { enqueueAudit, getJobQueue } from './job-queue.js';
 
 /**
  * Shared service for full lead analysis + automations
- * Used by /api/analyze-lead and the Autopilot Worker
  */
-export async function performFullAnalysis(url, leadData = {}, forceReanalyze = false, options = {}, onProgress) {
-    const targetPhase = options.phase || 3;
-    try {
-        if (onProgress) onProgress('Initializing technical audit and competitive context...');
-        
-        // 1. Fetch leads for competitive analysis
-        let allLeads = [];
-        try {
-            const leadsData = await fetchLeads();
-            allLeads = leadsData.leads || [];
-        } catch (error) {
-            console.log('⚠️ (AnalysisService) Couldn\'t fetch leads for competitive context');
-        }
+export async function performFullAnalysis(
+  url,
+  leadData = {},
+  forceReanalyze = false,
+  options = {},
+  onProgress
+) {
+  const targetPhase = options.phase || 3;
+  const includeIntel = Boolean(options.includeIntel);
+  let runId = options.runId;
+  let traceId = options.traceId;
 
-        // 2. Check Cache
-        if (!forceReanalyze) {
-            const supabaseResult = await getAnalysisFromSupabase(url);
-            if (supabaseResult.success) {
-                console.log(`💾 (AnalysisService) Cache hit: ${url}`);
-                const cachedData = supabaseResult.data;
-                const cachedLead = cachedData.leadData || leadData || {};
-                
-                // Se a cache já contém a fase solicitada ou superior, retornamos
-                const cachedPhase = cachedData.audit_phase || 3;
-                if (cachedPhase >= targetPhase) {
-                    if (onProgress) onProgress('Loading cached technical analysis...');
-                    cachedData.emailTemplate = await generateEmailTemplate(cachedData, cachedLead, allLeads);
+  if (!runId) {
+    const run = await createAnalysisRun({
+      leadWebsite: url,
+      phase: targetPhase,
+      includeIntel,
+      traceId,
+    });
+    runId = run.id;
+    traceId = run.traceId;
+  }
 
-                    // 🔥 Trigger automations even on cache hit
-                    console.log('💾 [Cache Hit] Preparando disparo de automações...');
-                    const leadWithId = {
-                        ...leadData,
-                        id: supabaseResult.data?.[0]?.id || supabaseResult.data?.id
-                    };
-                    console.log(`📡 Chamando runAutomationsForLead (Cache) para Lead ID: ${leadWithId.id}`);
-                    runAutomationsForLead(leadWithId, cachedData).then(() => {
-                        console.log('✅ runAutomationsForLead (Cache) concluído.');
-                    }).catch(err => 
-                        console.error('❌ (AnalysisService) Automation error (Cache):', err.message)
-                    );
+  try {
+    if (onProgress) onProgress('Initializing technical audit...');
+    await appendRunStep(runId, 'init', 'running');
 
-                    return { success: true, data: cachedData, cached: true };
-                }
-            }
-        }
+    let allLeads = await getCompetitiveLeadsMeta(
+      leadData.city || leadData.lead_city,
+      leadData.sector || leadData.type || leadData.lead_type,
+      url,
+      80
+    );
 
-        // 3. Quota check
-        if (!quotaManager.canAnalyze()) {
-            throw new Error('Daily quota exceeded');
-        }
-
-        console.log(`🔍 (AnalysisService) Analyzing Phase ${targetPhase}: ${url}`);
-        const analysis = await analyzeLead(url, leadData, allLeads, options, onProgress);
-        
-        // 4. Multi-Device Mockup (Desktop + Laptop + iPhone) — Apenas a partir da Fase 2
-        if (targetPhase >= 2) {
-            try {
-                if (onProgress) onProgress('Generating multi-device screenshot and mockups (Desktop, Laptop, Mobile)...');
-                const mockup = await generateMultiDeviceMockup(url, leadData.id || 'lead');
-                if (mockup.success) {
-                    analysis.mockupUrl = `/screenshots/${mockup.filename}`;
-                    analysis.mockupPath = mockup.path;
-                }
-            } catch (error) {
-                console.warn('⚠️ (AnalysisService) Multi-Mockup generation failed (non-critical):', error.message);
-            }
-        }
-
-        // 5. Template & Results — Apenas na Fase 3 (AI/Custom template)
-        if (targetPhase === 3) {
-            if (onProgress) onProgress('Drafting tailored sales proposal template...');
-            const emailTemplate = await generateEmailTemplate(analysis, leadData, allLeads);
-            analysis.emailTemplate = emailTemplate;
-        }
-        analysis.leadData = leadData;
-
-        // 6. Persistence
-        if (onProgress) onProgress('Saving audit results to Alygen database...');
-        const leadDataWithWebsite = { ...leadData, website: url };
-        const supabaseResult = await saveAnalysisToSupabase(leadDataWithWebsite, analysis);
-
-        // 7. Automations — Apenas na Fase 3
-        if (targetPhase === 3 && supabaseResult.success) {
-            console.log('🔗 Preparando disparo de automações...');
-            const leadWithId = {
-                ...leadDataWithWebsite,
-                id: supabaseResult.data?.[0]?.id || supabaseResult.data?.id
-            };
-            console.log(`📡 Chamando runAutomationsForLead para Lead ID: ${leadWithId.id}`);
-            runAutomationsForLead(leadWithId, analysis).then(() => {
-                console.log('✅ runAutomationsForLead concluído.');
-            }).catch(err => 
-                console.error('❌ (AnalysisService) Automation error:', err.message)
+    let previousAnalysis = null;
+    if (!forceReanalyze) {
+      const cached = await getAnalysisByWebsite(url);
+      if (cached.success) {
+        const cachedPhase = cached.data?.audit_phase || 3;
+        if (cachedPhase >= targetPhase && !includeIntel) {
+          if (onProgress) onProgress('Loading cached analysis...');
+          cached.data.emailTemplate = await generateEmailTemplate(cached.data, leadData, allLeads);
+          const leadWithId = {
+            ...leadData,
+            id: cached.raw?.id,
+            website: url,
+          };
+          if (targetPhase === 3) {
+            runAutomationsForLead(leadWithId, cached.data).catch((err) =>
+              console.error('❌ Automation error (cache):', err.message)
             );
+          }
+          await finishAnalysisRun(runId, 'completed');
+          return { success: true, data: cached.data, cached: true, runId, traceId };
         }
-
-        quotaManager.useQuota();
-        return { success: true, data: analysis, cached: false };
-        
-    } catch (error) {
-        console.error('❌ (AnalysisService) Error:', error.message);
-        throw error;
+        previousAnalysis = cached.data;
+      }
     }
+
+    if (!quotaManager.canAnalyze()) {
+      throw new Error('Daily quota exceeded');
+    }
+
+    await appendRunStep(runId, 'audit', 'running');
+    const analysis = await analyzeLead(url, leadData, allLeads, { ...options, runId, traceId }, onProgress);
+    await appendRunStep(runId, 'audit', 'completed');
+
+    if (targetPhase >= 2) {
+      try {
+        if (onProgress) onProgress('Generating mockups...');
+        const mockup = await generateMultiDeviceMockup(url, leadData.id || 'lead');
+        if (mockup.success) {
+          analysis.mockupUrl = `/screenshots/${mockup.filename}`;
+          analysis.mockupPath = mockup.path;
+        }
+      } catch (error) {
+        console.warn('⚠️ Mockup failed:', error.message);
+      }
+    }
+
+    const diff = computeAuditDiff(previousAnalysis, analysis);
+    if (diff) analysis.auditDiff = diff;
+
+    if (analysis.dataQuality?.pageSpeed === 'missing' || analysis.pageSpeedFailed) {
+      await appendRunStep(runId, 'pagespeed_retry', 'scheduled');
+      const boss = getJobQueue();
+      if (boss) {
+        await enqueueAudit({
+          url,
+          leadData: { ...leadData, website: url },
+          forceReanalyze: true,
+          phase: targetPhase,
+          rescoreOnly: true,
+          parentRunId: runId,
+        });
+      }
+    }
+
+    analysis.leadData = leadData;
+    analysis.traceId = traceId;
+    analysis.runId = runId;
+
+    await appendRunStep(runId, 'save', 'running');
+    const saveResult = await saveAnalysis({ ...leadData, website: url }, analysis);
+    await appendRunStep(runId, 'save', saveResult.success ? 'completed' : 'failed');
+
+    let finalAnalysis = analysis;
+
+    if (includeIntel && saveResult.success) {
+      const intelResult = await runMarketIntelAfterAudit({
+        url,
+        leadData,
+        analysis,
+        savedRow: saveResult.raw || saveResult.data,
+        traceId,
+        runId,
+        allLeads,
+      });
+      if (intelResult.success) {
+        finalAnalysis = intelResult.analysis;
+        finalAnalysis.emailTemplate = intelResult.emailTemplate;
+      }
+    } else if (targetPhase === 3) {
+      finalAnalysis.emailTemplate = await generateEmailTemplate(finalAnalysis, leadData, allLeads);
+      await appendRunStep(runId, 'email_template', 'completed');
+    }
+
+    if (targetPhase === 3 && saveResult.success) {
+      const leadWithId = {
+        ...leadData,
+        website: url,
+        id: saveResult.data?.id || saveResult.raw?.id,
+      };
+      runAutomationsForLead(leadWithId, finalAnalysis).catch((err) =>
+        console.error('❌ Automation error:', err.message)
+      );
+      await appendRunStep(runId, 'automations', 'triggered');
+    }
+
+    quotaManager.useQuota();
+    await finishAnalysisRun(runId, 'completed');
+    return { success: true, data: finalAnalysis, cached: false, runId, traceId };
+  } catch (error) {
+    await finishAnalysisRun(runId, 'failed', error.message);
+    console.error('❌ (AnalysisService) Error:', error.message);
+    throw error;
+  }
 }

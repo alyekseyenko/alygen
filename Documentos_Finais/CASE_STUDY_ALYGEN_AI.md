@@ -25,7 +25,7 @@ O resultado é um ecossistema de microserviços Event-Driven focado em zero lat�
 
 *   **Predictive Lead Scoring (Algoritmo RandomForest):** Sistema de Machine Learning treinado com dados históricos do negócio, capaz de prever a Probabilidade de Conversão de uma lead com precisão decimal avançada (ex: 17.4%).
 *   **NumPy Competitive Benchmarking:** Motor analítico vetorizado para alocação matemática de concorrência. Utiliza o cálculo avançado de "produto escalar" para comparar o Q-Score de uma lead face à média estrita do seu ecosistema local (Cidade/Distrito).
-*   **Data Lake Extensível (PostgreSQL + JSONB):** A arquitetura utiliza o Supabase com colunas nativas de JSONB para injetar Strategic Insights sem necessidade de migrações complexas.
+*   **Data Lake Extensível (PostgreSQL + JSONB):** A arquitetura utiliza o Postgres local com colunas nativas de JSONB para injetar Strategic Insights sem necessidade de migrações complexas.
 *   **Data Freezing (Status FROZEN):** Mecanismo de persistência stateful que torna o registo JSONB imutável após uma auditoria, eliminando a redundância computacional de re-análises e fornecendo acesso sub-segundo ao histórico técnico da pipeline.
 
 ---
@@ -92,7 +92,7 @@ A arquitetura do Alygen CRM não é apenas um feito de engenharia; é um multipl
 *   **Backend & Orquestração:** Node.js | Express | Winston Logging | node-cron
 *   **Microserviços & ML:** Python 3.12 | Flask | NumPy | Scikit-Learn | Pandas | lxml
 *   **GenAI & Agentes:** LangChain | Groq API (Llama-3.1-8B-Instant) | DuckDuckGo Search API
-*   **Infraestrutura Cloud:** Supabase (PostgreSQL + JSONB | RLS Security) | Vercel
+*   **Infraestrutura Cloud:** PostgreSQL local (PostgreSQL + JSONB | RLS Security) | Vercel
 *   **Automação & Crawling:** Playwright Stealth | Puppeteer | n8n | Telegram Bot API
 
 ---

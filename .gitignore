@@ -10,8 +10,13 @@ venv/
 .venv/
 env/
 
+# Supabase CLI temp (never commit)
+supabase/.temp/
+
 # Environment & Secrets
 .env
+backend/.env
+frontend/.env
 *.env.local
 
 # Google credentials (NEVER commit)

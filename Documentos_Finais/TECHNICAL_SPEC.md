@@ -25,7 +25,7 @@ Construído como um **High-Performance SaaS Orchestrator**, este sistema transfo
 ### 📊 1. Master Dashboard (Leads Engine)
 Central command hub para gestão de 1.000+ leads sem lag de performance.
 - **SWR (Stale-While-Revalidate)**: UI ultra-rápida que serve dados em cache e atualiza análises em background.
-- **Enrichment Engine**: Fusão em tempo real de dados brutos do Sheet com análise persistente do Supabase.
+- **Enrichment Engine**: Fusão em tempo real de dados brutos do Sheet com análise persistente do Postgres local.
 - **Dynamic Filters**: Filtro instantâneo por Grau (A-F), Prioridade (High/Low/Critical) e Status CRM.
 - **Status Indicators**: Indicadores visuais para "WhatsApp Enviado", "Email Enviado" e "Pixel Health".
 
@@ -158,7 +158,7 @@ Garante que funcionalidades como PDF Generation e Google Ranking continuam 100% 
 - 3x mais rápido que o módulo cheerio do Node.js.
 
 ### 🤖 ML Lead Scoring (RandomForest)
-- **Engine**: Treino com dados históricos do Supabase via `/ml/train`.
+- **Engine**: Treino com dados históricos do Postgres local via `/ml/train`.
 - **Métrica**: Prediz a **Probabilidade de Conversão** (0.0% - 100.0%) por lead.
 - **Precision Engineering**: Apresentação de scores com precisão de uma casa decimal (ex: **17.4%**) para transmitir autoridade analítica e confiança ao utilizador final.
 - **Shape-safe**: funciona mesmo com datasets sem leads fechados (proteção contra `IndexError`).
@@ -169,7 +169,7 @@ Garante que funcionalidades como PDF Generation e Google Ranking continuam 100% 
 
 ```
 Google Sheets
-      ↓ (webhook → Supabase)
+      ↓ (webhook → Postgres local)
 Node.js Backend (porta 4000)
       ↓ (python-bridge.js)
 Python Microservices (porta 3002)
@@ -192,14 +192,14 @@ Python Microservices (porta 3002)
 | Market Intel Match | Triple-Resilience: Exact Website → ILIKE Matching → Internal ID Fallback |
 | Python Ranking | N/A (resultado `ranking: 'N/A'` — não bloqueia análise) |
 | Playwright (Python) | Análise continua sem dados de scraping |
-| Supabase Foreign Key | Correção via `ON CONFLICT DO NOTHING` em `automation_logs` |
+| Postgres local Foreign Key | Correção via `ON CONFLICT DO NOTHING` em `automation_logs` |
 | AI Agent Failure | Graceful Degradation: Mostra UI mas omite insights se API Groq falhar |
 
 ---
 
 ## 🛠️ Data Infrastructure
 
-### Supabase JSONB Strategy
+### Postgres local JSONB Strategy
 `full_analysis` como coluna JSONB permite:
 - **Indexable Search**: Queries específicas (ex: "todos os leads com SEO < 50").
 - **Infinite Extensibility**: Novos módulos sem migração de schema.
@@ -234,8 +234,8 @@ langchain, langchain-groq, langchain-community, duckduckgo-search
 
 ### Variáveis de Ambiente (`.env.example`)
 ```
-SUPABASE_URL, SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY  # Crucial para bypass de RLS em AI Agents
+Postgres local_URL, Postgres local_ANON_KEY
+Postgres local_SERVICE_ROLE_KEY  # Crucial para bypass de RLS em AI Agents
 GROQ_API_KEY
 PAGESPEED_API_KEY
 PYTHON_PORT=3002
@@ -359,7 +359,7 @@ Edição inline de emails extraídos.
 - **Inline Input**: Input para correção de email
 - **Auto-Save**: Salvamento automático ao perder foco
 - **Validation**: Validação básica de formato de email
-- **Sync with Backend**: Sincronização com Supabase
+- **Sync with Backend**: Sincronização com Postgres local
 
 ## 🚦 Sistema de Rate Limiting
 Proteção contra abuso e sobrecarga da API.
@@ -381,7 +381,7 @@ Logging estruturado e observabilidade.
 Gestão inteligente de cache para consistência de dados.
 - **Leads Cache**: Cache de leads no backend
 - **Auto-Invalidation**: Invalidação automática em updates de CRM
-- **Service Integration**: Integração com Supabase service
+- **Service Integration**: Integração com Postgres local service
 - **Performance**: Melhoria de performance em listagens grandes
 
 ## ♿ Sistema de Análise de Acessibilidade
@@ -519,7 +519,7 @@ Arquitetura de componentes React modular e reutilizável.
 Arquitetura de serviços modulares do backend Node.js.
 
 ### Core Services
-- **supabase-service**: Integração com Supabase (CRUD, queries complexas)
+- **Postgres local-service**: Integração com PostgreSQL local (CRUD, queries complexas)
 - **cache-service**: Gestão de cache de leads
 - **analysis-service**: Orquestrador de análises
 - **analysis-queue**: Fila de processamento de análises
@@ -759,7 +759,7 @@ Framework & Middleware:
 - Helmet for security headers
 
 Database Integration:
-- Supabase Client (PostgreSQL)
+- Postgres local Client (PostgreSQL)
 - JSONB storage for flexible schemas
 - Real-time subscriptions
 - Row Level Security (RLS)
@@ -821,7 +821,7 @@ Multi-Agent System:
 
 Machine Learning:
 - RandomForest with 17.4% precision engineering
-- Historical training with Supabase data
+- Historical training with Postgres local data
 - Feature selection and engineering
 - Model persistence and versioning
 - Shape-safe prediction pipeline
@@ -897,7 +897,7 @@ Real-time Features:
 
 ### **Database Architecture**
 
-#### **Supabase (PostgreSQL):**
+#### **PostgreSQL local (PostgreSQL):**
 ```
 Schema Design:
 - JSONB columns for flexible data storage

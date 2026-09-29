@@ -2,6 +2,7 @@
 class GroqKeyManager {
   constructor() {
     // Carregar chaves prioritariamente do ambiente (.env)
+    // GROQ_API_KEYS=chave1,chave2,... (preferido) ou GROQ_API_KEY única
     const envKeys = (process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || '')
       .split(',')
       .map(k => k.trim())

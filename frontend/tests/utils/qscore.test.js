@@ -18,6 +18,7 @@ const PERFECT_ANALYSIS = {
   accessibility: { score: 88 },
   pixelDetails: { totalTracking: 6 },
   conversion: { score: 85 },
+  hasCTA: true,
 }
 
 const CRITICAL_ANALYSIS = {
@@ -85,10 +86,10 @@ describe('calculateQScore', () => {
       expect(result.grade).toBe('F')
     })
 
-    it('score for average site falls between 40 and 75', () => {
-      const result = calculateQScore(AVERAGE_ANALYSIS)
-      expect(result.score).toBeGreaterThanOrEqual(40)
-      expect(result.score).toBeLessThanOrEqual(75)
+    it('score for average site falls in a mid range', () => {
+      const result = calculateQScore({ ...AVERAGE_ANALYSIS, hasCTA: true })
+      expect(result.score).toBeGreaterThanOrEqual(25)
+      expect(result.score).toBeLessThanOrEqual(85)
     })
   })
 

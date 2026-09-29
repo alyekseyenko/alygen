@@ -1,17 +1,5 @@
 // Estratégia de Ações Modular do Motor de Automações
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-dotenv.config();
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-
-const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false
-    }
-});
+import { db } from '../db-client.js';
 
 export async function executeAction(node, context, isDryRun, automation, renderTemplate) {
     const { lead, analysis } = context;
@@ -84,7 +72,7 @@ export async function executeAction(node, context, isDryRun, automation, renderT
                         }
                         
                     } else if (node.config?.template_id) {
-                        const { getEmailTemplates } = await import('../supabase-service.js');
+                        const { getEmailTemplates } = await import('../crm-data-service.js');
                         const templates = await getEmailTemplates();
                         const tmpl = templates.data?.find(t => t.id === node.config.template_id);
                         if (tmpl) {
@@ -208,7 +196,7 @@ export async function executeAction(node, context, isDryRun, automation, renderT
                         // Persistir o email na análise se foi bem sucedido
                         if (recipient && analysis?.website) {
                             try {
-                                const { updateLeadEmail } = await import('../supabase-service.js');
+                                const { updateLeadEmail } = await import('../crm-data-service.js');
                                 await updateLeadEmail(analysis.website, recipient);
                                 console.log(`✅ Email ${recipient} persistido na análise do lead.`);
                             } catch (error) {
@@ -224,37 +212,50 @@ export async function executeAction(node, context, isDryRun, automation, renderT
             
             if (node.actionType === 'trigger_next_lead') {
                 console.log(`🔄 [Autopilot] Ação disparada: Procurando próximo lead...`);
+                const normalizeSite = (raw) => {
+                    if (!raw) return '';
+                    return String(raw).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
+                };
                 try {
                     const { fetchLeads } = await import('../sheets.js');
-                    const { getAllAnalysesMeta } = await import('../supabase-service.js');
+                    const { getAllAnalysesMeta } = await import('../crm-data-service.js');
+                    const { enqueueLeadAnalysis } = await import('../analysis-enqueue.js');
                     const analysisQueue = (await import('../../analysis-queue.js')).default;
-                    
-                    // 1. Get all leads from Sheets
+
                     const sheetData = await fetchLeads();
                     const allLeads = sheetData.leads || [];
-                    
-                    // 2. Get already analyzed websites from Supabase
-                    const { data: analyses } = await getAllAnalysesMeta(2000);
-                    const analyzedWebsites = new Set((analyses || []).map(a => {
-                        if (!a.website) return '';
-                        return a.website.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
-                    }));
 
-                    // 3. Find first lead that is NOT analyzed
-                    const nextLead = allLeads.find(l => {
-                        if (!l.website) return false;
-                        const normUrl = l.website.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
-                        return !analyzedWebsites.has(normUrl);
+                    const meta = await getAllAnalysesMeta(5000);
+                    const analyses = meta.success ? meta.data : [];
+                    const analyzedWebsites = new Set(
+                        analyses.map((a) => normalizeSite(a.website)).filter(Boolean)
+                    );
+
+                    const queuedSites = new Set(
+                        (analysisQueue.queue || [])
+                            .filter((q) => q.status === 'pending' || q.status === 'processing')
+                            .map((q) => normalizeSite(q.leadData?.website || q.leadData?.lead_website))
+                            .filter(Boolean)
+                    );
+
+                    const nextLead = allLeads.find((l) => {
+                        const normUrl = normalizeSite(l.website);
+                        if (!normUrl) return false;
+                        if (analyzedWebsites.has(normUrl)) return false;
+                        if (queuedSites.has(normUrl)) return false;
+                        return true;
                     });
 
                     if (nextLead) {
-                        console.log(`✅ [Autopilot] Próximo lead encontrado: ${nextLead.name} (${nextLead.website}). Adicionando à fila.`);
-                        analysisQueue.add(nextLead);
-                        return { status: 'continue', message: `Agendado: ${nextLead.name}` };
-                    } else {
-                        console.log('🏁 [Autopilot] Ciclo concluído: Não há mais leads pendentes nas Google Sheets.');
-                        return { status: 'continue', message: 'Sem mais leads para processar' };
+                        console.log(`✅ [Autopilot] Próximo lead: ${nextLead.name} (${nextLead.website}) → fila (pg-boss ou JSON).`);
+                        const job = await enqueueLeadAnalysis(nextLead.website, nextLead, false, { phase: 3 });
+                        return {
+                            status: 'continue',
+                            message: `Agendado: ${nextLead.name} (${job.backend || 'queue'})`,
+                        };
                     }
+                    console.log('🏁 [Autopilot] Sem leads pendentes nas Sheets (ou já na fila/analisados).');
+                    return { status: 'continue', message: 'Sem mais leads para processar' };
                 } catch (err) {
                     console.error('❌ [Autopilot] Erro ao disparar próximo lead:', err.message);
                 }
@@ -268,7 +269,7 @@ export async function executeAction(node, context, isDryRun, automation, renderT
                     if (isDryRun) {
                         console.log(`🧪 (DRY RUN) Sucesso fingindo atualizar ${field} -> ${value}`);
                     } else {
-                        await supabase.from('leads').update({ [field]: value }).eq('id', lead.id);
+                        await db.from('leads').update({ [field]: value }).eq('id', lead.id);
                     }
                     return { status: 'continue' };
                 } catch (e) {
@@ -346,7 +347,7 @@ export async function executeAction(node, context, isDryRun, automation, renderT
                     if (isDryRun) {
                         console.log(`🧪 (DRY RUN) WhatsApp simulado para ${phone}: "${message.substring(0, 50)}..."`);
                     } else {
-                        const { sendWhatsApp } = await import('../whatsapp-service.js');
+                        const { sendWhatsApp } = await import('../whatsapp.js');
                         await sendWhatsApp(phone, message, lead.name, analysis.website);
                         context.whatsapp_success = true;
                     }
@@ -474,7 +475,7 @@ CRM Deals Manager - Automação em tempo real
                         console.log(`🧪 (DRY RUN) Aprovação Telegram simulada.`);
                     } else {
                         // Salvar estado atual para retoma após aprovação
-                        const { error } = await supabase.from('automation_states').insert([{
+                        const { error } = await db.from('automation_states').insert([{
                             automation_id: automation.id,
                             lead_id: lead.id,
                             current_node_id: node.id,

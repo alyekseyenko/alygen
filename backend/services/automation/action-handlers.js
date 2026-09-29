@@ -1,18 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import axios from 'axios';
+import { db } from '../db-client.js';
+import { getMarketIntelMultiAgent } from '../python-bridge.js';
+import { buildAuditContextFromAnalysis } from '../../utils/audit-context.js';
 import * as telegramService from '../telegram-service.js';
-dotenv.config();
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-
-const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false
-    }
-});
+import { assertPublicHttpUrl } from '../../utils/ssrf.js';
 
 /**
  * Padrão Strategy/Command: Cada ação é uma classe/função independente.
@@ -28,7 +18,7 @@ export const ActionRegistry = {
             if (isDryRun) {
                 console.log(`🧪 (DRY RUN) Sucesso fingindo atualizar ${field} -> ${value}`);
             } else {
-                await supabase.from('leads').update({ [field]: value }).eq('id', lead.id);
+                await db.from('leads').update({ [field]: value }).eq('id', lead.id);
             }
             return { status: 'continue' };
         } catch (e) {
@@ -43,6 +33,7 @@ export const ActionRegistry = {
             if (isDryRun) {
                  console.log(`🧪 (DRY RUN) Webhook POST simulado para ${node.config.url}`);
             } else {
+                await assertPublicHttpUrl(node.config.url);
                 await fetch(node.config.url, {
                     method: node.config.method || 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -105,7 +96,7 @@ export const ActionRegistry = {
             if (isDryRun) {
                 console.log(`🧪 (DRY RUN) Aprovação Telegram simulada.`);
             } else {
-                const { error } = await supabase.from('automation_states').insert([{
+                const { error } = await db.from('automation_states').insert([{
                     automation_id: automation.id,
                     lead_id: lead.id,
                     current_node_id: node.id,
@@ -130,6 +121,20 @@ export const ActionRegistry = {
      * Pesquisa concorrentes em tempo real e guarda o intel no lead.
      * Quando ativo na automação "xxxx", enriquece o email com dados de mercado.
      */
+    agent_run: async ({ node, context, isDryRun }) => {
+        const { lead } = context;
+        const agentType = node.config?.agent || 'market_intel';
+        if (isDryRun) {
+            context.variables = context.variables || {};
+            context.variables.agent_output = `[DRY RUN] Agente ${agentType}`;
+            return { status: 'continue' };
+        }
+        if (agentType === 'market_intel') {
+            return ActionRegistry.market_intel({ node, context, isDryRun: false });
+        }
+        return { status: 'continue' };
+    },
+
     market_intel: async ({ node, context, isDryRun }) => {
         const { lead } = context;
         const name   = lead.name || lead.company_name || '';
@@ -147,13 +152,9 @@ export const ActionRegistry = {
         }
 
         try {
-            const PYTHON_URL = `http://localhost:${process.env.PYTHON_PORT || 3002}`;
-            const res = await axios.post(`${PYTHON_URL}/agent/market-intel`, 
-                { name, city, sector, website },
-                { timeout: 60000 }
-            );
-
-            const data = res.data;
+            const auditContext = buildAuditContextFromAnalysis(lead, context.analysis || {});
+            const agentResult = await getMarketIntelMultiAgent(name, city, sector, website, auditContext);
+            const data = agentResult;
 
             if (data.success && data.intel) {
                 // Guardar no contexto para o email usar
@@ -161,10 +162,15 @@ export const ActionRegistry = {
                 context.variables.agent_intel = data.intel;
 
                 // Persistir no Supabase
-                await supabase.from('lead_analyses').update({
+                const updatePayload = {
                     agent_intel: data.intel,
-                    agent_intel_at: new Date().toISOString()
-                }).eq('id', lead.id);
+                    agent_intel_at: new Date().toISOString(),
+                };
+                if (lead.id) {
+                    await db.from('lead_analyses').update(updatePayload).eq('id', lead.id);
+                } else if (website) {
+                    await db.from('lead_analyses').update(updatePayload).eq('lead_website', website);
+                }
 
                 console.log(`✅ [Automation] Intel gravado para ${name}`);
             } else {

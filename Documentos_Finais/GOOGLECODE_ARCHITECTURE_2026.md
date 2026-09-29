@@ -22,7 +22,7 @@ O Alygen CRM representa uma arquitetura de **Event-Driven Microservices** de cla
 graph TB
     subgraph "Data Ingestion Layer"
         A[n8n Workflow Automation] -->|Webhook| B[Google Sheets Master]
-        B -->|Sync API| C[Supabase PostgreSQL]
+        B -->|Sync API| C[PostgreSQL local (Docker + pgvector)]
     end
     
     subgraph "Orchestration Layer (Node.js)"
@@ -91,7 +91,7 @@ graph TB
 | **Backend Orchestration** | Node.js + Express | API Gateway | <50ms response |
 | **Python Engine (Async)** | FastAPI + Uvicorn | Agent Orchestration | 1000+ concurrent reqs |
 | **Python Engine (Sync)** | Flask + Gunicorn | ML Scoring | <200ms prediction |
-| **Database** | Supabase (PostgreSQL) | Data Persistence | <10ms query |
+| **Database** | PostgreSQL local (PostgreSQL) | Data Persistence | <10ms query |
 | **Vector Operations** | NumPy | Benchmarking | O(n) complexity |
 | **Machine Learning** | Scikit-Learn | Predictive Scoring | 17.4% precision |
 | **GenAI** | Groq Llama-3.1-8B | NLP Analysis | <500ms latency |
@@ -426,8 +426,8 @@ class PredictiveContentOptimizer:
 # Data Collection Pipeline
 class AIDataCollector:
     def __init__(self):
-        self.interaction_db = SupabaseClient()
-        self.feedback_db = SupabaseClient()
+        self.interaction_db = LocalDbClient()
+        self.feedback_db = LocalDbClient()
     
     async def collect_interaction(self, lead_id, message, context):
         # Collect full interaction context
@@ -598,7 +598,7 @@ class AIPerformanceMonitor:
 
 ### 4.1 Database Schema Design
 
-#### Supabase PostgreSQL Schema
+#### PostgreSQL local (Docker + pgvector) Schema
 
 ```sql
 -- Core Leads Table
@@ -716,7 +716,7 @@ CREATE TABLE training_data (
 sequenceDiagram
     participant n8n as n8n Workflow
     participant GS as Google Sheets
-    participant SB as Supabase
+    participant SB as Postgres local
     participant Node as Node.js Backend
     participant Py as Python Engine
     participant AI as Groq AI
@@ -751,7 +751,7 @@ class CacheManager {
   constructor() {
     this.l1Cache = new Map(); // In-memory (100ms)
     this.l2Cache = RedisClient; // Redis (1ms)
-    this.l3Cache = SupabaseClient; // Database (10ms)
+    this.l3Cache = Postgres local; // Database (10ms)
   }
   
   async get(key) {
@@ -846,7 +846,7 @@ class SecurityMiddleware:
 # GDPR Compliance Manager
 class GDPRManager:
     def __init__(self):
-        self.consent_db = SupabaseClient()
+        self.consent_db = LocalDbClient()
         self.anonymizer = DataAnonymizer()
     
     async def request_consent(self, user_id, purpose):
@@ -918,8 +918,8 @@ services:
     ports:
       - "4000:4000"
     environment:
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - Postgres local_URL=${Postgres local_URL}
+      - Postgres local_ANON_KEY=${Postgres local_ANON_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
     depends_on:
       - python-fastapi
@@ -949,7 +949,7 @@ services:
     ports:
       - "6379:6379"
   
-  # PostgreSQL (if not using Supabase)
+  # PostgreSQL (Postgres local)
   postgres:
     image: postgres:15-alpine
     ports:
@@ -1212,7 +1212,7 @@ spec:
 # Multi-Tenant Architecture
 class MultiTenantManager:
     def __init__(self):
-        self.tenant_db = SupabaseClient()
+        self.tenant_db = LocalDbClient()
     
     async def create_tenant(self, tenant_data):
         # Create isolated schema for tenant
@@ -1252,7 +1252,7 @@ class MultiTenantManager:
 # Event Sourcing Architecture
 class EventStore:
     def __init__(self):
-        this.events_db = SupabaseClient()
+        this.events_db = LocalDbClient()
     
     async def save_event(self, event):
         # Save event to event store
@@ -1327,9 +1327,9 @@ class EventStore:
 
 ```env
 # Database
-SUPABASE_URL=https://alygen.supabase.co
-SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_KEY=your_service_key
+Postgres local_URL=https://alygen.Postgres local.co
+Postgres local_ANON_KEY=your_anon_key
+Postgres local_SERVICE_KEY=your_service_key
 
 # AI Services
 GROQ_API_KEY=your_groq_key

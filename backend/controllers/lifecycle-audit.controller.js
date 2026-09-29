@@ -2,7 +2,7 @@ import { fetchLeads } from '../services/sheets.js';
 import { calculateQScoreSimple } from '../services/q-score-calculator.js';
 import { generateProposalPDF } from '../services/proposal-generator.js';
 import { generateWebsiteImprovementEmail } from '../services/email-templates.js';
-import supabase from '../services/supabase-service.js';
+import crmData from '../services/crm-data-service.js';
 
 /**
  * 0 to 100 Lead Lifecycle Simulation
@@ -111,7 +111,7 @@ export const runLifecycleSimulation = async (req, res) => {
 
       case 'enrollment': { // Step 4: CRM/DB Orchestration
         // We attempt a dry-run insert into a specific test partition or just verify table health
-        const result = await supabase.getAnalyticsStats();
+        const result = await crmData.getAnalyticsStats();
         const error = result.success === false;
         
         res.json({

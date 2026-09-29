@@ -41,9 +41,10 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [leads, setLeads] = useState([])
-  const [supabaseStats, setSupabaseStats] = useState(null)
+  const [dbStats, setDbStats] = useState(null)
   const [quota, setQuota] = useState(null)
   const [queue, setQueue] = useState(null)
+  const [aiMetrics, setAiMetrics] = useState(null)
   const [privacyMode, setPrivacyMode] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
@@ -54,18 +55,20 @@ export default function Dashboard() {
   async function load() {
     setLoading(true)
     try {
-      const [leadsRes, statsRes, quotaRes, queueRes] = await Promise.all([
+      const [leadsRes, statsRes, quotaRes, queueRes, aiRes] = await Promise.all([
         api.get('/fetch-leads'),
-        api.get('/supabase/stats').catch(() => null),
+        api.get('/analyses/stats').catch(() => null),
         api.get('/quota').catch(() => null),
         api.get('/queue-stats').catch(() => null),
+        api.get('/system/ai-metrics').catch(() => null),
       ])
 
       const leadsPayload = leadsRes?.data?.data?.leads || leadsRes?.data?.data || []
       setLeads(leadsPayload)
-      setSupabaseStats(statsRes?.data?.stats || null)
+      setDbStats(statsRes?.data?.stats || null)
       setQuota(quotaRes?.data?.quota || queueRes?.data?.quota || null)
       setQueue(queueRes?.data?.queue || null)
+      setAiMetrics(aiRes?.data?.success ? aiRes.data : null)
     } finally {
       setLoading(false)
     }
@@ -352,6 +355,61 @@ export default function Dashboard() {
             </Card>
           ))}
         </div>
+
+        {aiMetrics && (
+          <div className="mt-6">
+            <p className="text-[9px] font-black text-white/25 uppercase tracking-[0.3em] mb-3">
+              Motor IA · últimos {aiMetrics.window_days || 7} dias
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                {
+                  label: 'Taxa degradada',
+                  value: `${Math.round((aiMetrics.fallback_rate || 0) * 100)}%`,
+                  sub: `${aiMetrics.total_generations || 0} gerações`,
+                  icon: AlertTriangle,
+                  color: 'text-amber-400',
+                },
+                {
+                  label: 'Latência p95',
+                  value: aiMetrics.p95_latency_ms != null
+                    ? `${Math.round(Number(aiMetrics.p95_latency_ms))} ms`
+                    : '—',
+                  sub: 'market intel + copy',
+                  icon: Clock,
+                  color: 'text-blue-400',
+                },
+                {
+                  label: 'Custo estimado',
+                  value: `€${Number(aiMetrics.total_cost_eur || 0).toFixed(4)}`,
+                  sub: 'tokens Groq',
+                  icon: Database,
+                  color: 'text-violet-400',
+                },
+                {
+                  label: 'Aprovação',
+                  value: `${Math.round((aiMetrics.approval_rate || 0) * 100)}%`,
+                  sub: 'feedback humano',
+                  icon: BarChart3,
+                  color: 'text-green-400',
+                },
+              ].map((card, i) => (
+                <Card key={i} className="bg-white/[0.02] border-white/[0.05] border-t-white/[0.08]">
+                  <CardHeader className="pb-2">
+                    <div className={`p-2 w-fit rounded-xl bg-white/5 border border-white/5 mb-3 ${card.color}`}>
+                      <card.icon className="w-4 h-4" />
+                    </div>
+                    <CardDescription className="text-[9px] font-black text-white/30 uppercase tracking-[0.2em]">
+                      {card.label}
+                    </CardDescription>
+                    <CardTitle className="text-2xl font-black tracking-tighter text-white">{card.value}</CardTitle>
+                    <div className="text-[10px] font-bold text-white/10 uppercase mt-1 tracking-widest">{card.sub}</div>
+                  </CardHeader>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mt-8">
           {/* ── Engagement Momentum ────────────────────────────────────────── */}

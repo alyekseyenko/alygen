@@ -22,7 +22,7 @@ Para além da metodologia, o projeto foi estruturado em módulos funcionais que 
 
 ### Páginas do Sistema (Sitemap)
 - **📊 [Dashboard Central](file:///c:/Users/Habitarmos/Desktop/Nova%20pasta%20%282%29/CRM%20Deals%20Manager/frontend/src/pages/Dashboard.jsx):** Visão panorâmica de saúde do negócio, taxas de conversão e volume de leads.
-- **🗂️ [Pipeline (Kanban)](file:///c:/Users/Habitarmos/Desktop/Nova%20pasta%20%282%29/CRM%20Deals%20Manager/frontend/src/pages/Pipeline.jsx):** Gestão visual de oportunidades com Drag & Drop e sincronização instantânea com Supabase.
+- **🗂️ [Pipeline (Kanban)](file:///c:/Users/Habitarmos/Desktop/Nova%20pasta%20%282%29/CRM%20Deals%20Manager/frontend/src/pages/Pipeline.jsx):** Gestão visual de oportunidades com Drag & Drop e sincronização instantânea com Postgres local.
 - **🌐 [Universo 3D](file:///c:/Users/Habitarmos/Desktop/Nova%20pasta%20%282%29/CRM%20Deals%20Manager/frontend/src/pages/Universo.jsx):** Visualização massiva de dados em WebGL (Three.js) para análise de clusters de mercado.
 - **🤖 [Health & Automation](file:///c:/Users/Habitarmos/Desktop/Nova%20pasta%20%282%29/CRM%20Deals%20Manager/frontend/src/pages/Automation.jsx):** Painel de controlo de orquestradores n8n, scrapers e monitorização de uptime de microserviços.
 - **📧 [Follow-ups & Sequences](file:///c:/Users/Habitarmos/Desktop/Nova%20pasta%20%282%29/CRM%20Deals%20Manager/frontend/src/pages/Followups.jsx):** Motor de sequências de e-mail automatizadas com rastreio de abertura (pixel tracking).
@@ -49,10 +49,10 @@ O Alygen v4.6 não é apenas um CRM, é um ecossistema de venda consultiva:
 ### Sprint 1: Fundação & Extração Massiva (Harvesting)
 **Objetivo:** Estabelecer a infraestrutura core e a capacidade de captar dados brutos.
 - **Backlog Items:**
-  - Setup do Supabase com Row Level Security (RLS).
+  - Setup do Postgres local com Row Level Security (RLS).
   - Implementação do Scraper multithread (n8n + Python).
   - Arquitetura de base de dados para 10.000+ leads.
-- **Definição de Pronto (DoD):** Dados injetados no Supabase e visíveis no dashboard básico.
+- **Definição de Pronto (DoD):** Dados injetados no Postgres local e visíveis no dashboard básico.
 
 ### Sprint 2: Inteligência Preditiva & Refinamento (Brain)
 **Objetivo:** Transformar dados brutos em "Business Intelligence".

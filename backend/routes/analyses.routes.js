@@ -7,8 +7,8 @@ import {
 
 const router = express.Router();
 
-router.get('/supabase/analyses', listAnalyses);
-router.get('/supabase/stats', getStats);
-router.get('/supabase/analysis/:website', getAnalysisByWebsite);
+router.get('/analyses', listAnalyses);
+router.get('/analyses/stats', getStats);
+router.get('/analyses/:website', getAnalysisByWebsite);
 
 export default router;

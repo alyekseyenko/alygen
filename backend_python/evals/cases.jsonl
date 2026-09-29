@@ -1,0 +1,12 @@
+{"name":"Clínica Aurora","city":"Porto","sector":"clínica dentária","website":"https://example-clinic.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Restaurante Maré","city":"Lisboa","sector":"restaurante","website":"https://example-food.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Loja Tech","city":"Braga","sector":"informática","website":"https://example-shop.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Advocacia Silva","city":"Coimbra","sector":"advogados","website":"https://example-law.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Hotel Ribeira","city":"Gaia","sector":"hotel","website":"https://example-hotel.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Ginásio Fit","city":"Faro","sector":"ginásio","website":"https://example-gym.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Oficina Auto","city":"Setúbal","sector":"oficina automóvel","website":"https://example-garage.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Arquitetura Norte","city":"Viana do Castelo","sector":"arquitetura","website":"https://example-arch.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Farmácia Central","city":"Aveiro","sector":"farmácia","website":"https://example-pharmacy.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Escola Idiomas","city":"Leiria","sector":"escola de línguas","website":"https://example-school.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Contabilidade Pro","city":"Évora","sector":"contabilidade","website":"https://example-accounting.pt","assertions":{"max_sentences":4,"no_placeholders":true}}
+{"name":"Salão Beleza","city":"Santarém","sector":"cabeleireiro","website":"https://example-salon.pt","assertions":{"max_sentences":4,"no_placeholders":true}}

@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import { render, Html, Head, Body, Container, Section, Row, Column, Heading, Text, Img, Hr, Button, Link, Preview } from '@react-email/components';
 import React from 'react';
+import { buildUnsubscribeUrl } from '../utils/unsubscribe-url.js';
 
 const e = React.createElement;
 
@@ -235,7 +236,7 @@ function FollowupEmail({ seq, day }) {
             'Comunicação B2B legítima com base no interesse legítimo para diagnóstico e análise tecnológica nos termos do Regulamento Geral sobre a Proteção de Dados (RGPD - UE 2016/679) e da Lei n.º 41/2004.'
           ),
           e(Text, { style: { margin: 0, fontSize: '11px', color: '#9ca3af', textAlign: 'center' } },
-            e(Link, { href: `${API_HOST}/api/unsubscribe?email=${encodeURIComponent(seq?.email || '')}`, style: { color: '#6b7280', textDecoration: 'underline' } }, 'Cancelar subscrição (Opt-out)'),
+            e(Link, { href: buildUnsubscribeUrl(seq?.email || ''), style: { color: '#6b7280', textDecoration: 'underline' } }, 'Cancelar subscrição (Opt-out)'),
             ' · ',
             e(Link, { href: `${COMPANY_WEBSITE}/privacy`, style: { color: '#6b7280', textDecoration: 'underline' } }, 'Política de Privacidade e Proteção de Dados')
           )
@@ -266,7 +267,7 @@ export async function sendFollowup1(seq) {
     from: `"${SMTP_FROM_NAME}" <${process.env.SMTP_USER}>`,
     to: seq.email,
     headers: {
-      'List-Unsubscribe': `<${API_HOST}/api/unsubscribe?email=${encodeURIComponent(seq.email)}>`,
+      'List-Unsubscribe': `<${buildUnsubscribeUrl(seq.email)}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
     },
     subject: (() => {
@@ -293,7 +294,7 @@ export async function sendFollowup2(seq) {
     from: `"${SMTP_FROM_NAME}" <${process.env.SMTP_USER}>`,
     to: seq.email,
     headers: {
-      'List-Unsubscribe': `<${API_HOST}/api/unsubscribe?email=${encodeURIComponent(seq.email)}>`,
+      'List-Unsubscribe': `<${buildUnsubscribeUrl(seq.email)}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
     },
     subject: (() => {

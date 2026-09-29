@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, TrendingDown, Zap, Award, Euro, Search, Shield, ShieldAlert, Users, Mail, Copy, Check, RefreshCw, FileText, Download, AlertTriangle, Eye, CheckCheck, Send, MessageCircle, Brain, Sparkles } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 import axios from 'axios'
+import { api } from '../utils/api.js'
 import { calculateQScore } from '../utils/qscore'
 import { calculateProjectPrice } from '../utils/pricing'
 import QScoreDetailed from './QScoreDetailed'
@@ -50,7 +51,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
   const handleGenerateAICopy = async (channel) => {
     setLoadingCopy(true)
     try {
-      const res = await axios.post(`http://localhost:3001/api/leads/${lead.id}/ai-copy`, {
+      const res = await api.post(`leads/${lead.id}/ai-copy`, {
         style: copywriterStyle,
         channel: channel,
         website: lead.website
@@ -76,7 +77,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
   const handleGenerateIntel = async () => {
     setLoadingIntel(true)
     try {
-      const res = await axios.post(`/api/leads/${lead.id}/market-intel`, {
+      const res = await api.post(`leads/${lead.id}/market-intel`, {
         website: lead.website
       });
       if (res.data.success) {
@@ -103,7 +104,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
   const handlePromoteLead = async () => {
     setPromoting(true)
     try {
-      const res = await axios.post('http://localhost:3001/api/leads/promote', {
+      const res = await api.post('leads/promote', {
         lead: lead,
         analysis: effectiveAnalysis
       });
@@ -142,7 +143,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
       setErrorFull(null)
       try {
         const websiteEncoded = encodeURIComponent(lead.website)
-        const response = await axios.get(`http://localhost:3001/api/supabase/analysis/${websiteEncoded}`)
+        const response = await api.get(`analyses/${websiteEncoded}`)
         if (response.data?.success) {
           const analysisData = response.data.data;
           console.log(`✅ Analysis loaded for ${lead.website}`);
@@ -151,7 +152,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
           // If it is a fast Phase 1 analysis, perform an on-demand background upgrade to Phase 3 AI
           if (analysisData && (analysisData.audit_phase === 1 || !analysisData.audit_phase)) {
             console.log('⚡ Starting on-demand upgrade to Phase 3 AI...');
-            const upgradeRes = await axios.post('http://localhost:3001/api/analyze-lead', {
+            const upgradeRes = await api.post('analyze-lead', {
               url: lead.website,
               leadData: lead,
               forceReanalyze: false,
@@ -260,7 +261,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
       })
       
       try {
-        const response = await axios.post(`http://localhost:3001/api/generate-certificate`, {
+        const response = await api.post(`generate-certificate`, {
           companyName: lead.name,
           website: lead.website,
           qscore: calculatedQScore.score,
@@ -290,7 +291,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
       return
     }
     try {
-      await axios.post('http://localhost:3001/api/send-whatsapp', { phone, message: whatsappMessage, leadName: lead.name, website: lead.website })
+      await api.post('send-whatsapp', { phone, message: whatsappMessage, leadName: lead.name, website: lead.website })
       setWhatsappSent(true)
       if (onWhatsAppSent) onWhatsAppSent(lead.website)
       toast.custom((t) => (
@@ -351,7 +352,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
     }
     
     try {
-      await axios.post('http://localhost:3001/api/send-email', {
+      await api.post('send-email', {
         leadId: lead.id,
         leadName: lead.name,
         recipient: recipientEmail,
@@ -396,7 +397,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
   async function handleGeneratePDF() {
     setGeneratingPDF(true)
     try {
-      const response = await axios.post('http://localhost:3001/api/generate-pdf', {
+      const response = await api.post('generate-pdf', {
         analysis: effectiveAnalysis,
         leadData: {
           name: lead.name,
@@ -478,7 +479,7 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
                 onClick={async () => {
                   try {
                     const newStatus = !(effectiveAnalysis.is_immune || false);
-                    const { data } = await axios.post('http://localhost:3001/api/crm/update', { 
+                    const { data } = await api.post('crm/update', { 
                       website: lead.website, 
                       payload: { is_immune: newStatus } 
                     });

@@ -2,12 +2,13 @@ import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { assertPublicHttpUrl } from '../utils/ssrf.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Criar pasta para screenshots se não existir
-const screenshotsDir = path.join(__dirname, '../../screenshots');
+const screenshotsDir = path.join(__dirname, '..', 'screenshots');
 if (!fs.existsSync(screenshotsDir)) {
   fs.mkdirSync(screenshotsDir, { recursive: true });
 }
@@ -21,6 +22,12 @@ export async function captureWebsiteScreenshot(url, options = {}) {
 
   let browser;
   try {
+    const safe = await assertPublicHttpUrl(url);
+    if (!safe.ok) {
+      return { success: false, error: safe.error };
+    }
+    const targetUrl = safe.url.href;
+
     browser = await puppeteer.launch({
       headless: 'new',
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
@@ -59,7 +66,7 @@ export async function captureWebsiteScreenshot(url, options = {}) {
     console.log(`📸 Capturando screenshot de: ${url} (${device})`);
 
     // Navegar para a URL
-    await page.goto(url, {
+    await page.goto(targetUrl, {
       waitUntil: 'networkidle2',
       timeout: 30000
     });

@@ -67,6 +67,8 @@ function initSqliteSchema() {
       schema_detected TEXT,
       ai_win_rate REAL DEFAULT 0,
       sales_hook TEXT,
+      agent_intel TEXT,
+      agent_intel_at TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -157,6 +159,113 @@ function initSqliteSchema() {
       body_html TEXT NOT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS leads (
+      id TEXT PRIMARY KEY,
+      lead_name TEXT,
+      lead_website TEXT,
+      client_email TEXT,
+      status TEXT DEFAULT 'LEAD',
+      is_immune INTEGER DEFAULT 0,
+      opt_out INTEGER DEFAULT 0,
+      metadata TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS email_sequences (
+      id TEXT PRIMARY KEY,
+      lead_id TEXT,
+      lead_name TEXT,
+      email TEXT UNIQUE NOT NULL,
+      website TEXT,
+      template TEXT,
+      email_body TEXT,
+      status TEXT DEFAULT 'sent',
+      sent_at TEXT,
+      followup1_sent_at TEXT,
+      followup2_sent_at TEXT,
+      replied_at TEXT,
+      paused INTEGER DEFAULT 0,
+      open_count INTEGER DEFAULT 0,
+      first_opened_at TEXT,
+      last_opened_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS lead_events (
+      id TEXT PRIMARY KEY,
+      lead_id TEXT,
+      lead_website TEXT,
+      event_type TEXT NOT NULL,
+      payload TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      doc_type TEXT NOT NULL,
+      title TEXT,
+      sector TEXT,
+      locale TEXT DEFAULT 'pt-PT',
+      source_uri TEXT,
+      body TEXT NOT NULL,
+      metadata TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS document_chunks (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      embedding TEXT,
+      tsv TEXT,
+      embedding_model TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_generations (
+      id TEXT PRIMARY KEY,
+      agent_name TEXT NOT NULL,
+      prompt_version TEXT,
+      lead_website TEXT,
+      input_context TEXT,
+      output_text TEXT,
+      model TEXT,
+      latency_ms INTEGER,
+      approved INTEGER,
+      outcome TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS app_users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT DEFAULT 'commercial',
+      display_name TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      action TEXT NOT NULL,
+      resource TEXT,
+      ip TEXT,
+      payload TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Run dynamic migrations for existing SQLite installations
@@ -170,6 +279,11 @@ function initSqliteSchema() {
   try { sqliteDb.exec("ALTER TABLE lead_analyses ADD COLUMN schema_detected TEXT;"); } catch (e) {}
   try { sqliteDb.exec("ALTER TABLE lead_analyses ADD COLUMN ai_win_rate REAL DEFAULT 0;"); } catch (e) {}
   try { sqliteDb.exec("ALTER TABLE lead_analyses ADD COLUMN sales_hook TEXT;"); } catch (e) {}
+  try { sqliteDb.exec("ALTER TABLE lead_analyses ADD COLUMN agent_intel TEXT;"); } catch (e) {}
+  try { sqliteDb.exec("ALTER TABLE lead_analyses ADD COLUMN agent_intel_at TEXT;"); } catch (e) {}
+  try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN trigger_type TEXT;"); } catch (e) {}
+  try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN workflow_data TEXT;"); } catch (e) {}
+  try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN run_count INTEGER DEFAULT 0;"); } catch (e) {}
 }
 initSqliteSchema();
 
@@ -240,6 +354,8 @@ async function initPostgresSchema() {
         schema_detected TEXT,
         ai_win_rate REAL DEFAULT 0,
         sales_hook TEXT,
+        agent_intel TEXT,
+        agent_intel_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -255,6 +371,8 @@ async function initPostgresSchema() {
       ALTER TABLE lead_analyses ADD COLUMN IF NOT EXISTS schema_detected TEXT;
       ALTER TABLE lead_analyses ADD COLUMN IF NOT EXISTS ai_win_rate REAL DEFAULT 0;
       ALTER TABLE lead_analyses ADD COLUMN IF NOT EXISTS sales_hook TEXT;
+      ALTER TABLE lead_analyses ADD COLUMN IF NOT EXISTS agent_intel TEXT;
+      ALTER TABLE lead_analyses ADD COLUMN IF NOT EXISTS agent_intel_at TIMESTAMP;
 
       CREATE TABLE IF NOT EXISTS alygen_config (
         id TEXT PRIMARY KEY DEFAULT 'global',
@@ -292,7 +410,8 @@ async function initPostgresSchema() {
         website TEXT,
         pain_points TEXT,
         competitors TEXT,
-        embedding vector(1536), -- Standard size for Llama/OpenAI/Gemini
+        intel_text TEXT,
+        embedding vector(768),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -346,6 +465,8 @@ async function initPostgresSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+    const { runMigrations } = await import('../db/run-migrations.js');
+    await runMigrations({ query: (sql, params) => client.query(sql, params) }, { dialect: 'postgres' });
     console.log('✅ PostgreSQL: Esquema de base de dados verificado e inicializado com sucesso.');
   } catch (error) {
     console.warn('⚠️ [PostgreSQL Failsafe] Falha ao ligar ao PostgreSQL local. Usando SQLite Local como Fallback!');
@@ -361,11 +482,11 @@ initPostgresSchema();
 export const db = {
   async query(sql, params = []) {
     if (usePostgres) {
-      try {
-        return await pool.query(sql, params);
-      } catch (err) {
-        console.error('❌ Erro no PostgreSQL, aplicando fallback dinâmico para SQLite:', err.message);
-      }
+      return await pool.query(sql, params);
+    }
+
+    if (process.env.ALLOW_SQLITE_FALLBACK !== 'true') {
+      throw new Error('Postgres indisponível. Defina PGHOST ou ALLOW_SQLITE_FALLBACK=true apenas em dev.');
     }
 
     // SQLite Fallback translation: convert $1, $2 parameters to ? and ILIKE to LIKE

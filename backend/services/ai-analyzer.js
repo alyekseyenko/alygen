@@ -1,12 +1,25 @@
 import axios from 'axios';
 import groqKeyManager from './groq-key-manager.js';
+import { invokeGroqChat, invokePythonLlm } from './llm-client.js';
 
 export async function analyzeWithAI(analysisData) {
   const prompt = buildAnalysisPrompt(analysisData);
-  
+  const system = 'Especialista em marketing digital B2B em PT-PT. Gere insights práticos em JSON.';
   try {
+    try {
+      const { text } = await invokePythonLlm({
+        system,
+        user: prompt,
+        purpose: 'reasoning',
+        timeoutMs: 35_000,
+      });
+      return parseAIResponse(text, analysisData);
+    } catch (gatewayErr) {
+      console.warn('⚠️ LLM gateway insights falhou:', gatewayErr.message);
+    }
+
     const groqApiKey = groqKeyManager.getCurrentKey();
-    
+
     if (!groqApiKey) {
       console.warn('⚠️ Nenhuma chave Groq disponível - tentando Ollama Local...');
       const localResult = await analyzeWithOllama(prompt);
@@ -15,36 +28,19 @@ export async function analyzeWithAI(analysisData) {
       }
       return generateBasicInsights(analysisData);
     }
-    
-    const response = await axios.post(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        model: process.env.OPENAI_MODEL || 'llama-3.1-8b-instant',
-        messages: [
-          {
-            role: 'system',
-            content: `Você é um especialista em marketing digital. Analise dados técnicos e gere insights práticos em JSON.`
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 1000
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${groqApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
-      }
-    );
-    
-    const aiResponse = response.data.choices[0].message.content;
+
+    const { text: aiResponse } = await invokeGroqChat({
+      groqApiKey,
+      model: process.env.OPENAI_MODEL || 'llama-3.1-8b-instant',
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.7,
+      maxTokens: 1000,
+    });
     return parseAIResponse(aiResponse, analysisData);
-    
+
   } catch (error) {
     const errorMsg = error.response?.data?.error?.message || error.message;
     

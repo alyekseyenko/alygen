@@ -1,0 +1,5 @@
+ALTER TABLE automations ADD COLUMN IF NOT EXISTS trigger_type TEXT DEFAULT 'auto';
+ALTER TABLE automations ADD COLUMN IF NOT EXISTS workflow_data TEXT;
+ALTER TABLE automations ADD COLUMN IF NOT EXISTS run_count INTEGER DEFAULT 0;
+
+ALTER TABLE automation_logs ADD COLUMN IF NOT EXISTS details_json TEXT;

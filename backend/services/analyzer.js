@@ -16,7 +16,6 @@ import { analyzeGoogleRanking } from './google-ranking-real.js';
 import { analyzeAEO } from './aeo-analyzer.js';
 import { analyzeGDPR } from './gdpr-analyzer.js';
 import { validateEmails } from './email-validator.js';
-import { generateEmailTemplate } from './email-template.js';
 
 // Modular New Structures
 import { getPageSpeedScore } from './analyzers/performance.js';
@@ -31,6 +30,15 @@ import {
 } from './analyzers/social-media.js';
 import { calculateQScore } from './analyzers/qscore-calculator.js';
 import { scoreWithPython, analyzeStrategic } from './python-bridge.js';
+import { assertPublicHttpUrl } from '../utils/ssrf.js';
+import { fetchRenderedPage } from './browser-pool.js';
+
+function mapQScorePriorityToPt(priority) {
+  const map = { CRITICAL: 'CRÍTICA', HIGH: 'ALTA', MEDIUM: 'MÉDIA', LOW: 'BAIXA' };
+  if (map[priority]) return map[priority];
+  if (['CRÍTICA', 'ALTA', 'MÉDIA', 'BAIXA'].includes(priority)) return priority;
+  return 'MÉDIA';
+}
 
 /**
  * THE LEAD ANALYSER ENGINE (Senior Refactored Orchestrator)
@@ -40,21 +48,29 @@ export async function analyzeLead(url, leadData = {}, allLeads = [], options = {
   const targetPhase = options.phase || 3;
   logger.info(`🔍 Iniciando Análise Modular Senior (Fase ${targetPhase}): ${url}`);
   if (onProgress) onProgress('[1/7] Normalizing URL and verifying firewall rules...');
-  
-  // 🔥 [Senior 2026 Fix] Garantir que o URL tem protocolo para evitar "Invalid URL" em ferramentas externas
+
+  const originalUrlInput = url;
   let finalUrl = url;
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     finalUrl = `https://${url}`;
     logger.info(`✨ Protocolo adicionado automaticamente: ${finalUrl}`);
   }
 
-  if (finalUrl.startsWith('http://')) {
-    try {
-      const httpsUrl = finalUrl.replace('http://', 'https://');
-      finalUrl = httpsUrl;
-    } catch (e) {}
+  const ssrf = await assertPublicHttpUrl(finalUrl);
+  if (!ssrf.ok) {
+    throw new Error(ssrf.error || 'URL não permitida');
   }
-  
+
+  const dataQuality = {
+    html: 'missing',
+    renderedHtml: 'missing',
+    pageSpeed: 'missing',
+    seo: 'missing',
+    security: 'missing',
+    accessibility: 'missing',
+    pixels: 'missing',
+  };
+
   // ─── Phase 0: Presence Detection ───────────────────────────────────────────
   const socialDetection = detectSocialMediaUrl(finalUrl);
   if (socialDetection.isSocialMedia) {
@@ -76,24 +92,39 @@ export async function analyzeLead(url, leadData = {}, allLeads = [], options = {
     if (html) {
       $ = cheerio.load(html);
       contentSnippet = $('body').text().substring(0, 3000).replace(/\s+/g, ' ');
+      dataQuality.html = 'measured';
     } else {
       logger.warn(`⚠️ HTML vazio retornado para ${finalUrl}. Usaremos PageSpeed como fonte primária.`);
     }
   } catch (err) {
     logger.error(`🚨 Falha total no fetch de HTML para ${finalUrl}: ${err.message}`);
   }
- 
+
+  let renderedHtml = html;
+  if (targetPhase >= 1) {
+    try {
+      const rendered = await fetchRenderedPage(finalUrl);
+      if (rendered.ok && rendered.html) {
+        renderedHtml = rendered.html;
+        dataQuality.renderedHtml = 'measured';
+        if (!$) $ = cheerio.load(renderedHtml);
+      }
+    } catch (renderErr) {
+      logger.warn(`⚠️ Render partilhado falhou: ${renderErr.message}`);
+    }
+  }
+
   // ─── Phase 2 & 3: Run Scanners based on targetPhase ───────────────────────
   logger.info(`⚡ Executando scanners para Fase ${targetPhase} em ${finalUrl}...`);
  
-  let performance = { mobile: 50, desktop: 50 };
-  let pixels = { totalTracking: 0 };
+  let performance = { mobile: null, desktop: null, pageSpeedFailed: true };
+  let pixels = { totalTracking: 0, dataQuality: 'missing' };
   let cta = [];
   let emails = [];
   let phones = [];
-  let seo = { score: 50 };
-  let security = { score: 50 };
-  let accessibility = { score: 50 };
+  let seo = { score: null };
+  let security = { score: null };
+  let accessibility = { score: null };
   let technologies = { industries: [], webserver: 'N/A' };
   let conversion = { score: 50 };
   let content = { score: 50 };
@@ -118,13 +149,13 @@ export async function analyzeLead(url, leadData = {}, allLeads = [], options = {
       socialRes, 
       aeoRes
     ] = await Promise.all([
-      detectPixels(finalUrl).catch(() => ({ totalTracking: 0 })),
-      analyzeCTA(finalUrl).catch(() => []),
+      detectPixels(finalUrl, renderedHtml).catch(() => ({ totalTracking: 0, dataQuality: 'missing' })),
+      analyzeCTA(finalUrl, renderedHtml).catch(() => []),
       extractEmail(finalUrl).catch(() => []),
       extractPhone(finalUrl).catch(() => []),
-      analyzeSEO(finalUrl, html).catch(e => ({ score: 30, error: e.message })),
-      analyzeSecurity(finalUrl, html, fetchResult.headers).catch(e => ({ score: 30, error: e.message })),      
-      analyzeAccessibility(finalUrl, html).catch(e => ({ score: 5, error: e.message })), 
+      analyzeSEO(finalUrl, renderedHtml || html).catch(e => ({ score: null, error: e.message })),
+      analyzeSecurity(finalUrl, renderedHtml || html, fetchResult.headers).catch(e => ({ score: null, error: e.message })),
+      analyzeAccessibility(finalUrl, renderedHtml || html).catch(e => ({ score: null, error: e.message })), 
       analyzeTechnologies(finalUrl, html).catch(e => ({ industries: [], webserver: 'N/A' })),  
       analyzeConversion(finalUrl, html).catch(e => ({ score: 20, error: e.message })),    
       analyzeSocialMedia(finalUrl, html).catch(e => ({ links: [] })),   
@@ -162,18 +193,18 @@ export async function analyzeLead(url, leadData = {}, allLeads = [], options = {
       strategicInsightsRes,
       aeoRes
     ] = await Promise.all([
-      getPageSpeedScore(finalUrl).catch(() => ({ mobile: 50, desktop: 50 })),
-      detectPixels(finalUrl).catch(() => ({ totalTracking: 0 })),
-      analyzeCTA(finalUrl).catch(() => []),
+      getPageSpeedScore(finalUrl).catch(() => ({ mobile: null, desktop: null, pageSpeedFailed: true })),
+      detectPixels(finalUrl, renderedHtml).catch(() => ({ totalTracking: 0, dataQuality: 'missing' })),
+      analyzeCTA(finalUrl, renderedHtml).catch(() => []),
       extractEmail(finalUrl).catch(() => []),
       extractPhone(finalUrl).catch(() => []),
-      analyzeSEO(finalUrl, html, groqKeyManager.getCurrentKey()).catch(e => ({ score: 50, error: e.message })),           
-      analyzeSecurity(finalUrl, html, fetchResult.headers).catch(e => ({ score: 50, error: e.message })),      
-      analyzeAccessibility(finalUrl, html).catch(e => ({ score: 50, error: e.message })), 
-      analyzeTechnologies(finalUrl, html).catch(e => ({ industries: [], webserver: 'N/A' })),  
-      analyzeConversion(finalUrl, html).catch(e => ({ score: 50, error: e.message })),    
-      analyzeContent(finalUrl, html, groqKeyManager.getCurrentKey()).catch(e => ({ score: 50 })),
-      analyzeSocialMedia(finalUrl, html).catch(e => ({ links: [] })),   
+      analyzeSEO(finalUrl, renderedHtml || html, groqKeyManager.getCurrentKey()).catch(e => ({ score: null, error: e.message })),
+      analyzeSecurity(finalUrl, renderedHtml || html, fetchResult.headers).catch(e => ({ score: null, error: e.message })),
+      analyzeAccessibility(finalUrl, renderedHtml || html).catch(e => ({ score: null, error: e.message })),
+      analyzeTechnologies(finalUrl, renderedHtml || html).catch(e => ({ industries: [], webserver: 'N/A' })),
+      analyzeConversion(finalUrl, renderedHtml || html).catch(e => ({ score: null, error: e.message })),
+      analyzeContent(finalUrl, renderedHtml || html, groqKeyManager.getCurrentKey()).catch(e => ({ score: null })),
+      analyzeSocialMedia(finalUrl, renderedHtml || html).catch(e => ({ links: [] })),   
       analyzeGoogleRanking(finalUrl, leadData).catch(e => ({ ranking: 'N/A' })),
       analyzeStrategic(contentSnippet, finalUrl).catch(e => ({ success: false, tone: 'neutral' })),
       analyzeAEO(finalUrl, html, leadData).catch(e => ({ score: 50 }))
@@ -223,32 +254,41 @@ export async function analyzeLead(url, leadData = {}, allLeads = [], options = {
     }
   }
 
-  if (onProgress) onProgress('[6/7] Orchestrating Multi-Agent AI (Researcher, Strategist & Synthesizer)...');
-  const gdpr = analyzeGDPR(html, $);
+  if (onProgress) onProgress('[6/7] Verificação GDPR e conformidade...');
+  const gdpr = analyzeGDPR(renderedHtml || html, $);
   
   if (onProgress) onProgress('[7/7] Consolidating audited data and calculating overall Q-Score...');
   
   // ─── Phase 3: Enrichment & Intelligent Score Merging ──────────────────────
   // Priorizar PageSpeed mas manter o detalhamento local se disponível
-  const finalSEOScore = performance.seoFromPageSpeed || seo.score || 30;
+  dataQuality.pageSpeed = performance.pageSpeedFailed ? 'missing' : 'measured';
+  if (seo.score != null) dataQuality.seo = 'measured';
+  if (security.score != null) dataQuality.security = 'measured';
+  if (accessibility.score != null) dataQuality.accessibility = 'measured';
+  if (pixels.dataQuality === 'measured' || pixels.totalTracking > 0) dataQuality.pixels = 'measured';
+
+  const finalSEOScore = performance.seoFromPageSpeed ?? seo.score ?? null;
   const refinedSEO = { 
     ...seo, 
     score: finalSEOScore, 
     source: performance.seoFromPageSpeed ? 'PageSpeed Insights' : 'Local Scrapper' 
   };
 
-  const finalA11yScore = performance.accessibilityFromPageSpeed || accessibility.score || 5;
+  const finalA11yScore = performance.accessibilityFromPageSpeed ?? accessibility.score ?? null;
   const refinedA11y = { 
     ...accessibility, 
     score: finalA11yScore, 
     source: performance.accessibilityFromPageSpeed ? 'PageSpeed Insights' : 'Local Scrapper' 
   };
 
-  const finalSecurityScore = (security && security.score > 0) ? security.score : (performance.bestPracticesFromPageSpeed || 20);
+  const finalSecurityScore =
+    security?.score != null && security.score > 0
+      ? security.score
+      : (performance.bestPracticesFromPageSpeed ?? security?.score ?? null);
   const refinedSecurity = { 
     ...security, 
     score: finalSecurityScore,
-    hasSSL: (finalUrl && finalUrl.startsWith('https')) || security?.hasSSL
+    hasSSL: security?.hasSSL ?? (String(originalUrlInput).startsWith('https://')),
   };
 
   // Executar AI apenas se Fase 3 for requerida para economizar tempo/custo
@@ -277,13 +317,15 @@ export async function analyzeLead(url, leadData = {}, allLeads = [], options = {
   const phoneList = (phones && phones.length > 0) ? phones : (leadData.phone ? [leadData.phone] : []);
 
   // 🐍 Python-Accelerated Q-Score (com fallback automático para JS)
+  const ctaObj = cta && typeof cta === 'object' && !Array.isArray(cta) ? cta : { hasCTA: false };
   const analysisForScoring = {
-    performanceMobile: performance.mobile || 50,
+    performanceMobile: performance.mobile ?? null,
     seo: refinedSEO,
     security: refinedSecurity,
     accessibility: refinedA11y,
     pixelDetails: pixels,
-    googleRanking: ranking,
+    hasCTA: Boolean(ctaObj.hasCTA),
+    googleRanking: typeof ranking === 'object' ? ranking : { score: 0 },
     aeo: aeo
   };
   
@@ -292,39 +334,79 @@ export async function analyzeLead(url, leadData = {}, allLeads = [], options = {
     leadData,
     // JS fallback — chamado se Python estiver offline
     (analysis, lead) => calculateQScore({
-      performanceScore: analysis.performanceMobile || 50,
+      performanceScore: analysis.performanceMobile ?? 0,
       seoScore: analysis.seo?.score || 50,
       securityScore: analysis.security?.score || 50,
-      accessibilityScore: analysis.accessibility?.score || 50,
       trackingCount: analysis.pixelDetails?.totalTracking || 0,
+      hasCTA: analysis.hasCTA,
+      hasSSL: analysis.security?.hasSSL,
       googleRanking: analysis.googleRanking,
-      aeoScore: analysis.aeo?.score || 50
     }, lead),
     allLeads
   ) || calculateQScore({
-    performanceScore: performance.mobile || 50,
+    performanceScore: performance.mobile ?? 0,
     seoScore: refinedSEO.score,
     securityScore: refinedSecurity.score,
-    accessibilityScore: refinedA11y.score,
     trackingCount: pixels.totalTracking || 0,
+    hasCTA: Boolean(ctaObj.hasCTA),
+    hasSSL: refinedSecurity.hasSSL,
     googleRanking: ranking,
-    aeoScore: aeo.score
   }, leadData);
 
   logger.info(`✨ Scores Finais [${url}]: Perf:${performance.mobile} | SEO:${refinedSEO.score} | Sec:${refinedSecurity.score} | Acc:${refinedA11y.score} | QScore:${qScoreData.score}`);
+
+  let enrichRes = null;
+  if (targetPhase >= 3) {
+    const { shouldRunAuditEnrichment, invokeAuditEnrich } = await import('./audit-enrichment.js');
+    const needsEnrich = shouldRunAuditEnrichment({
+      targetPhase,
+      dataQuality,
+      qScore: qScoreData,
+      emailList,
+      phoneList,
+    });
+    if (needsEnrich) {
+      if (onProgress) onProgress('[7/7] Agente extrator: defeitos e qualificação...');
+      const recoverScrape =
+        dataQuality.html === 'missing' ||
+        dataQuality.renderedHtml === 'missing' ||
+        (emailList.length === 0 && phoneList.length === 0);
+      enrichRes = await invokeAuditEnrich({
+        website: finalUrl,
+        leadData,
+        htmlSnippet: (renderedHtml || html || contentSnippet).slice(0, 4000),
+        metrics: {
+          performanceMobile: performance.mobile,
+          seoScore: refinedSEO.score,
+          securityScore: refinedSecurity.score,
+          accessibilityScore: refinedA11y.score,
+          tracking: pixels.totalTracking,
+          hasCTA: Boolean(ctaObj.hasCTA),
+          hasSSL: refinedSecurity.hasSSL,
+          aeoScore: aeo?.score,
+        },
+        dataQuality,
+        qScore: qScoreData,
+        recoverScrape,
+        traceId: options.traceId,
+      });
+    }
+  }
 
   const result = {
     url: finalUrl,
     originalUrl: url,
     audit_phase: targetPhase,
-    performanceMobile: performance.mobile || 50,
-    performanceDesktop: performance.desktop || 50,
+    performanceMobile: performance.mobile ?? null,
+    performanceDesktop: performance.desktop ?? null,
+    pageSpeedFailed: Boolean(performance.pageSpeedFailed),
+    dataQuality,
     pageSpeedScores: {
-      performance: performance.mobile || 50,
-      accessibility: performance.accessibilityFromPageSpeed || 50,
-      seo: performance.seoFromPageSpeed || 50,
-      bestPractices: performance.bestPracticesFromPageSpeed || 50,
-      pwa: performance.pwaFromPageSpeed || 50
+      performance: performance.mobile ?? null,
+      accessibility: performance.accessibilityFromPageSpeed ?? null,
+      seo: performance.seoFromPageSpeed ?? null,
+      bestPractices: performance.bestPracticesFromPageSpeed ?? null,
+      pwa: performance.pwaFromPageSpeed ?? null,
     },
     lighthouseAudits: performance.lighthouseAudits || {},
     coreWebVitals: performance.coreWebVitals || {},
@@ -353,18 +435,15 @@ export async function analyzeLead(url, leadData = {}, allLeads = [], options = {
     visionAnalysis,
     qScore: qScoreData,
     overallScore: qScoreData.score,
-    priority: aiInsights.priority || 'MÉDIA',
+    priority: mapQScorePriorityToPt(qScoreData.priority || qScoreData.status),
     analyzedAt: new Date().toISOString()
   };
 
-  if (targetPhase === 3) {
-    try {
-      result.emailTemplate = await generateEmailTemplate(result, leadData, allLeads);
-    } catch (e) {
-      logger.warn('⚠️ Falha ao gerar template de email:', e.message);
-    }
+  if (enrichRes?.success) {
+    const { mergeEnrichmentIntoAnalysis } = await import('./audit-enrichment.js');
+    mergeEnrichmentIntoAnalysis(result, enrichRes);
   }
-  
+
   return result;
 }
 

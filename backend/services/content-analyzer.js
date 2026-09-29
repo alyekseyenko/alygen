@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { invokeGroqChat, invokeLlmJson, parseJsonFromLlm } from './llm-client.js';
 
 export async function analyzeContent(url, html = null, groqApiKey = null) {
   try {
@@ -18,8 +19,8 @@ export async function analyzeContent(url, html = null, groqApiKey = null) {
     
     // Análise com IA (se disponível)
     let aiAnalysis = null;
-    if (groqApiKey && content.mainText.length > 100) {
-      aiAnalysis = await analyzeContentWithAI(content, groqApiKey);
+    if (content.mainText.length > 100) {
+      aiAnalysis = await analyzeContentWithAI(content, groqApiKey, url);
     }
     
     const score = calculateContentScore(basicAnalysis, aiAnalysis);
@@ -204,9 +205,9 @@ function detectBasicGrammarIssues(text) {
   return issues;
 }
 
-async function analyzeContentWithAI(content, groqApiKey) {
-  try {
-    const prompt = `Analise este conteúdo:
+async function analyzeContentWithAI(content, groqApiKey, url = null) {
+  const system = 'Especialista em copywriting B2B em PT-PT. Responda APENAS com JSON válido.';
+  const userPrompt = `Analise este conteúdo:
 
 TEXTO: ${content.mainText.substring(0, 1500)}
 
@@ -220,42 +221,36 @@ Responda APENAS com JSON válido:
   "suggestions": ["sugestao1", "sugestao2"]
 }`;
 
-    const response = await axios.post(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
+  try {
+    return await invokeLlmJson({
+      system,
+      user: userPrompt,
+      purpose: 'copy',
+      agentName: 'content_analyzer',
+      leadWebsite: url,
+      timeoutMs: 30_000,
+    });
+  } catch (gatewayErr) {
+    if (!groqApiKey) {
+      console.warn('AI Content: gateway falhou e sem Groq:', gatewayErr.message);
+      return null;
+    }
+    try {
+      const { text } = await invokeGroqChat({
+        groqApiKey,
         model: process.env.OPENAI_MODEL || 'llama-3.1-8b-instant',
         messages: [
-          { role: 'system', content: 'Você é especialista em copywriting. Responda APENAS com JSON válido.' },
-          { role: 'user', content: prompt }
+          { role: 'system', content: system },
+          { role: 'user', content: userPrompt },
         ],
         temperature: 0.3,
-        max_tokens: 300
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${groqApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
-      }
-    );
-    
-    const aiResponse = response.data.choices[0].message.content;
-    
-    try {
-      return JSON.parse(aiResponse);
-    } catch (parseError) {
-      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const cleaned = jsonMatch[0].replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
-        return JSON.parse(cleaned);
-      }
-      throw parseError;
+        maxTokens: 300,
+      });
+      return parseJsonFromLlm(text);
+    } catch (error) {
+      console.error('AI Content Analysis Error:', error.response?.data?.error?.message || error.message);
+      return null;
     }
-    
-  } catch (error) {
-    console.error('AI Content Analysis Error:', error.response?.data?.error?.message || error.message);
-    return null;
   }
 }
 

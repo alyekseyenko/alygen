@@ -72,7 +72,7 @@ export default function Pipeline() {
   async function loadDeals() {
     setLoading(true)
     try {
-      const { data } = await api.get('/supabase/analyses?is_immune=true')
+      const { data } = await api.get('/analyses?is_immune=true')
       if (data.success) {
         setLeads(data.data.map(lead => ({
           ...lead,

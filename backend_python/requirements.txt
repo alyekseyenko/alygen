@@ -22,6 +22,7 @@ langchain-groq>=0.1.9
 langchain-community>=0.2.16
 langgraph>=0.1.13
 duckduckgo-search>=6.2.7
+PyYAML>=6.0.1
 
 # Fallback Microservice (Flask)
 flask>=3.0.0

@@ -15,9 +15,29 @@ jobs:
     name: ⚙️ Backend Test Suite & Health
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: alygen_crm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: ./backend
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: alygen_crm
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -36,6 +56,9 @@ jobs:
 
       - name: Run Backend Vitest Suite
         run: npm test
+
+      - name: ESLint (backend)
+        run: npm run lint
 
   frontend-test-and-build:
     name: 🎨 Frontend Test & Production Build
@@ -60,6 +83,9 @@ jobs:
 
       - name: Run Frontend Vitest Suite
         run: npm test
+
+      - name: ESLint (frontend)
+        run: npm run lint
 
       - name: Validate Vite Production Bundle
         run: npm run build
@@ -88,7 +114,13 @@ jobs:
           pip install -r requirements.txt pytest
 
       - name: Run Pytest Scoring & Heuristics
-        run: python -m pytest tests/
+        run: python -m pytest tests/ evals/
+
+      - name: Ruff lint (Python)
+        run: pip install ruff && ruff check . --select E9,F63,F7,F82
+
+      - name: Pip audit (Python)
+        run: pip install pip-audit && pip-audit -r requirements.txt
 
   security-and-compliance:
     name: 🛡️ Security Audit & Dependency Scans
@@ -103,12 +135,18 @@ jobs:
         with:
           node-version: 22
 
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
       - name: Scan Backend Dependencies (npm audit)
         run: |
           cd backend
-          npm audit --audit-level=critical || true
+          npm audit --audit-level=critical
 
       - name: Scan Frontend Dependencies (npm audit)
         run: |
           cd frontend
-          npm audit --audit-level=critical || true
+          npm audit --audit-level=critical

@@ -50,7 +50,7 @@ function TerminalSimulator({ isVisible }) {
       '[BOOT] Loading environment variables from encrypted vault...',
       '[AUTH] Validating service role keys & RLS overrides...',
       '[OK] Root authentication successful.',
-      '[NET] Resolving Supabase cluster nodes (eu-west-1)...',
+      '[NET] A ligar ao Postgres local...',
       '[DB] Establishing pg_bouncer connection pool (max_size=50)...',
       '[WARN] Latency spike detected on eu-west-1 (42ms) - tolerating...',
       '[DB] Executing schema validation against "lead_analyses"...',
@@ -332,7 +332,7 @@ export default function TestsPage() {
         else if (suite.id === 'backend-core') {
           tests = backendResults.filter(r => ['ScraperAPI (Puppeteer)', 'Google PageSpeed', 'SMTP Mail Server'].includes(r.rawId))
         } else if (suite.id === 'db-integrity') {
-          tests = backendResults.filter(r => ['Supabase Database', 'Data Isolation (RLS)'].includes(r.rawId))
+          tests = backendResults.filter(r => ['Postgres/SQLite Local'].includes(r.rawId))
         } else if (suite.id === 'job-engine') {
           tests = backendResults.filter(r => r.rawId === 'Job Engine (Queue)')
         }

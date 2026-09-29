@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { normalizeUrl } from '../utils/url-helper.js';
-import { getAnalysisFromSupabase } from '../services/supabase-service.js';
+import { getAnalysisByWebsite } from '../services/crm-data-service.js';
 
 /**
  * 🤖 [Alygen 2026] Multi-Tone AI Copywriter Engine (PT-PT Native)
@@ -15,9 +15,9 @@ export const generateAICopywriter = async (req, res) => {
         const normalizedWeb = normalizeUrl(targetWebsite);
 
         // Retrieve local metrics
-        let dbResult = await getAnalysisFromSupabase(targetWebsite);
+        let dbResult = await getAnalysisByWebsite(targetWebsite);
         if (!dbResult.success && normalizedWeb) {
-            dbResult = await getAnalysisFromSupabase(normalizedWeb);
+            dbResult = await getAnalysisByWebsite(normalizedWeb);
         }
 
         let leadResult = dbResult.success ? dbResult.raw : null;
@@ -92,9 +92,7 @@ Fórmula:
 Não inclua cabeçalhos, assuntos ou saudações repetitivas de e-mail. Escreva o corpo do veredicto em parágrafos elegantes usando tags <p>, <strong>, <ul> e <li>.`;
         }
 
-        const prompt = `
-${personaPrompt}
-
+        const userPrompt = `
 ${channelInstructions}
 
 **DADOS DA AUDITORIA REAL DO CLIENTE:**
@@ -109,8 +107,40 @@ ${visionText ? `\n**ANÁLISE COGNITIVA VISUAL (Google Cloud Vision AI):**\n${vis
 
 Gere o texto final diretamente, sem introduções ou observações. RESPONDA APENAS com o texto gerado da mensagem.`;
 
-        // Generate using Groq rotating keys with Ollama local fallback
+        const prompt = `${personaPrompt}\n\n${userPrompt}`;
+        const llmStarted = Date.now();
         let copyText = '';
+
+        try {
+            const { invokePythonLlm } = await import('../services/llm-client.js');
+            const { text, usage } = await invokePythonLlm({
+                system: personaPrompt,
+                user: userPrompt,
+                purpose: 'copy',
+                timeoutMs: 45_000,
+            });
+            copyText = text || '';
+            if (copyText) {
+                const { logAiGeneration } = await import('../services/ai-generations.js');
+                await logAiGeneration({
+                    agentName: 'copywriter',
+                    promptVersion: '1.0.0',
+                    leadWebsite: finalUrl,
+                    inputContext: { style, channel, score },
+                    outputText: copyText.slice(0, 4000),
+                    model: usage?.model || 'llm_gateway',
+                    latencyMs: Date.now() - llmStarted,
+                    tokensIn: usage?.tokens_in,
+                    tokensOut: usage?.tokens_out,
+                    costEur: usage?.cost_eur,
+                    degraded: false,
+                });
+            }
+        } catch (gatewayErr) {
+            console.warn('⚠️ LLM gateway copywriter falhou, fallback Groq/Ollama...', gatewayErr.message);
+        }
+
+        if (!copyText) {
         try {
             const { default: groqKeyManager } = await import('../services/groq-key-manager.js');
             const groqApiKey = groqKeyManager.getCurrentKey();
@@ -135,6 +165,7 @@ Gere o texto final diretamente, sem introduções ou observações. RESPONDA APE
             }
         } catch (groqErr) {
             console.warn('⚠️ Groq falhou ao gerar copywriter pitch, tentando Ollama local...', groqErr.message);
+        }
         }
 
         // Local Ollama fallback if Groq failed or is empty
@@ -234,7 +265,7 @@ Gere o texto final diretamente, sem introduções ou observações. RESPONDA APE
                 let allLeads = localLeads;
                 if (allLeads.length === 0) {
                     try {
-                        const { getAllAnalyses } = await import('../services/supabase-service.js');
+                        const { getAllAnalyses } = await import('../services/crm-data-service.js');
                         const allLeadsRes = await getAllAnalyses(1000);
                         allLeads = allLeadsRes.success ? allLeadsRes.data : [];
                     } catch (sErr) {}

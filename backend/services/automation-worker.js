@@ -19,9 +19,10 @@ export function startAutomationWorker() {
         console.log(`⏱️ Automation Worker: Verificando resumens pendentes em ${new Date().toLocaleTimeString()}...`);
 
         try {
-            const states = db.prepare(`
-                SELECT id FROM automation_states WHERE status = 'pending' AND resume_at <= ?
-            `).all(now);
+            const { rows: states } = await db.query(
+                `SELECT id FROM automation_states WHERE status = 'pending' AND resume_at <= $1`,
+                [now]
+            );
 
             if (states && states.length > 0) {
                 console.log(`🔔 Encontrados ${states.length} workflows prontos para retomar!`);

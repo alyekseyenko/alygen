@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { getAutomations } from './services/supabase-service.js';
+import { getAutomations } from './services/crm-data-service.js';
 
 async function test() {
   const result = await getAutomations();

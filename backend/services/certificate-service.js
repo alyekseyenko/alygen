@@ -119,64 +119,38 @@ export async function createCertificate(leadData, analysis) {
     validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1 ano
   };
   
-  // Salvar no Supabase
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('certificates')
-        .insert({
-          certificate_id: certificateId,
-          company_name: certificate.companyName,
-          website: certificate.website,
-          qscore: qScore,
-          qgrade: qGrade,
-          metrics: certificate.metrics,
-          issued_at: certificate.issuedAt,
-          valid_until: certificate.validUntil,
-          full_certificate: certificate
-        });
-      
-      if (error) {
-        console.error('❌ Erro ao salvar certificado no Supabase:', error);
-      } else {
-        console.log(`✅ Certificado ${certificateId} salvo no Supabase`);
-      }
-    } catch (error) {
-      console.error('❌ Erro ao salvar certificado:', error);
-    }
-  }
+  // Salvar no armazenamento local
+  await saveCertificate({
+    certificate_id: certificateId,
+    company_name: certificate.companyName,
+    website: certificate.website,
+    qscore: qScore,
+    qgrade: qGrade,
+    metrics: certificate.metrics,
+    issued_at: certificate.issuedAt,
+    valid_until: certificate.validUntil,
+    full_certificate: certificate,
+  });
   
   return certificate;
 }
 
-/**
- * Verificar certificado por ID
- */
 export async function verifyCertificate(certificateId) {
-  if (!supabase) {
-    return { valid: false, error: 'Supabase não configurado' };
-  }
-  
   try {
-    const { data, error } = await supabase
-      .from('certificates')
-      .select('*')
-      .eq('certificate_id', certificateId)
-      .single();
-    
-    if (error || !data) {
+    const row = db.prepare('SELECT * FROM certificates WHERE certificate_id = ? LIMIT 1').get(certificateId);
+    if (!row) {
       return { valid: false, error: 'Certificado não encontrado' };
     }
     
-    // Verificar se ainda é válido
-    const validUntil = new Date(data.valid_until);
+    const validUntil = new Date(row.valid_until);
     const isExpired = validUntil < new Date();
+    const full = JSON.parse(row.full_certificate);
     
     return {
       valid: !isExpired,
-      certificate: data.full_certificate,
-      issuedAt: data.issued_at,
-      validUntil: data.valid_until,
+      certificate: full,
+      issuedAt: row.issued_at,
+      validUntil: row.valid_until,
       expired: isExpired
     };
   } catch (error) {

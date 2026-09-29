@@ -66,7 +66,7 @@ export const runUltimateAudit = async (req, res) => {
 
       case 'secret_integrity': {
         const mandatoryKeys = [
-          'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'GROQ_API_KEY', 
+          'PGHOST', 'PGDATABASE', 'GROQ_API_KEY', 
           'SCRAPER_API_KEY', 'GOOGLE_SHEET_ID',
           'TELEGRAM_BOT_TOKEN'
         ];

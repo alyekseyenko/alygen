@@ -1,7 +1,7 @@
 import { fetchLeads } from '../services/sheets.js';
 import { listSequences, markOpened } from '../services/email-sequences.js';
-import { getAllAnalysesMeta, updateLeadEmail, getAnalysisFromSupabase } from '../services/supabase-service.js';
-import { supabase } from '../services/supabase-client.js';
+import { getAllAnalysesMeta, updateLeadEmail, getAnalysisByWebsite } from '../services/crm-data-service.js';
+import { db } from '../services/db-client.js';
 import axios from 'axios';
 import quotaManager from '../quota-manager.js';
 import cacheService from '../services/cache-service.js';
@@ -9,6 +9,8 @@ import { sendEmail } from '../services/email.js';
 import { mlPredictCloseProbability, getMarketIntelMultiAgent } from '../services/python-bridge.js';
 import { performFullAnalysis } from '../services/analysis-service.js';
 import { normalizeUrl } from '../utils/url-helper.js';
+import { verifyUnsubscribeToken } from '../utils/unsubscribe-token.js';
+import { assertPublicHttpUrl } from '../utils/ssrf.js';
 
 export { normalizeUrl };
 
@@ -16,7 +18,7 @@ const enrichLeads = async (leads) => {
   try {
     const [{ data: sequences }, { data: analyses }] = await Promise.all([
       listSequences(),
-      getAllAnalysesMeta(100000) // 🔥 Aumentado de 5000 para 100000 para acomodar qualquer tamanho de lista sem limites
+      getAllAnalysesMeta(parseInt(process.env.FETCH_LEADS_ANALYSIS_LIMIT || '5000', 10))
     ]);
 
     const sequenceMap = {};
@@ -77,7 +79,7 @@ export const getLeads = async (req, res) => {
 
     // Helper to get formatted leads list from local database (Single Source of Truth)
     const loadLeadsFromDatabase = async () => {
-      const { getAllAnalyses } = await import('../services/supabase-service.js');
+      const { getAllAnalyses } = await import('../services/crm-data-service.js');
       const dbResult = await getAllAnalyses(100000);
       if (!dbResult.success || !dbResult.data) return [];
       
@@ -118,13 +120,13 @@ export const getLeads = async (req, res) => {
         console.log('🔄 Sincronizando novas leads do Google Sheets para a Base de Dados...');
         const sheetsResult = await fetchLeads();
         if (sheetsResult && sheetsResult.leads && sheetsResult.leads.length > 0) {
-          const { getAnalysisFromSupabase, updateLeadCRMData } = await import('../services/supabase-service.js');
+          const { getAnalysisByWebsite, updateLeadCRMData } = await import('../services/crm-data-service.js');
           
           for (const sheetLead of sheetsResult.leads) {
             if (!sheetLead.website) continue;
             
             // Check if website already exists in database
-            const dbCheck = await getAnalysisFromSupabase(sheetLead.website);
+            const dbCheck = await getAnalysisByWebsite(sheetLead.website);
             const dbLead = dbCheck.data;
             if (!dbCheck.success || !dbLead) {
               console.log(`➕ Nova lead detetada no Google Sheets: ${sheetLead.website}. Adicionando à base de dados local...`);
@@ -252,7 +254,7 @@ export const getLeads = async (req, res) => {
     } else {
       console.log('🛡️ [Failsafe] Carregando apenas os clientes reais da Base de Dados Local...');
       try {
-        const { getAllAnalyses } = await import('../services/supabase-service.js');
+        const { getAllAnalyses } = await import('../services/crm-data-service.js');
         const dbResult = await getAllAnalyses(1000);
         if (dbResult.success && dbResult.data && dbResult.data.length > 0) {
           rawLeads = dbResult.data.map((item, index) => {
@@ -303,14 +305,19 @@ export const analyzeLead = async (req, res) => {
   try {
     const { url, leadData, forceReanalyze, phase } = req.body;
     if (!url) return res.status(400).json({ success: false, error: 'URL é obrigatória' });
-    
-    const { default: analysisQueue } = await import('../analysis-queue.js');
+
+    const urlCheck = await assertPublicHttpUrl(url);
+    if (!urlCheck.ok) {
+      return res.status(400).json({ success: false, error: urlCheck.error });
+    }
+
+    const { enqueueLeadAnalysis } = await import('../services/analysis-enqueue.js');
     
     // Check if we already have it in Supabase to avoid queueing if not forced
     // (This is a Senior optimization: don't queue what you already have cached)
     if (!forceReanalyze) {
-      const { getAnalysisFromSupabase } = await import('../services/supabase-service.js');
-      const cached = await getAnalysisFromSupabase(url);
+      const { getAnalysisByWebsite } = await import('../services/crm-data-service.js');
+      const cached = await getAnalysisByWebsite(url);
       if (cached.success) {
         const cachedPhase = cached.data?.audit_phase || 3;
         const requestedPhase = phase || 3;
@@ -338,7 +345,7 @@ export const analyzeLead = async (req, res) => {
             success: true, 
             data: cached.data,
             status: 'completed',
-            source: 'supabase',
+            source: 'postgres',
             quota: quotaManager.getQuota()
           });
         }
@@ -347,32 +354,16 @@ export const analyzeLead = async (req, res) => {
 
     // Add to queue for heavy processing
     console.log(`🎟️ Adding analysis of ${url} to the Background Queue (Phase ${phase || 3})...`);
-    const job = analysisQueue.add(leadData || { website: url }, forceReanalyze, { phase: phase || 3 });
-    
-    // --- Lógica Alygen 2026: Processos Prioritários ---
-    if (req.body.includeIntel) {
-      console.log('🚀 [2026 Engine] Custom Search detectado. Orquestrando Multi-Agente em background...');
-      const { getMarketIntelMultiAgent } = await import('../services/python-bridge.js');
-      
-      const name = (leadData && leadData.name) || url.replace(/https?:\/\/(www\.)?/, '').split('/')[0];
-      const city = (leadData && leadData.city) || 'Portugal';
-      const sector = (leadData && leadData.sector) || 'Negócios';
-      
-      // Corremos isto em background mas o job da fila guardará o resultado
-      getMarketIntelMultiAgent(name, city, sector, url).then(async (intel) => {
-        if (intel.success) {
-          await supabase
-            .from('lead_analyses')
-            .update({ agent_intel: intel.intel })
-            .ilike('lead_website', `%${normalizeUrl(url)}%`);
-          console.log(`✅ [2026 Engine] Intel Multi-Agente guardado para ${url}`);
-        }
-      }).catch(e => console.error('❌ Erro no Intel Prioritário:', e.message));
-    }
+    const job = await enqueueLeadAnalysis(url, leadData || {}, forceReanalyze, {
+      phase: phase || 3,
+      includeIntel: Boolean(req.body.includeIntel),
+    });
 
     return res.json({ 
       success: true, 
-      jobId: job.id, 
+      jobId: job.id,
+      runId: job.runId,
+      traceId: job.traceId,
       status: 'queued',
       position: job.position,
       estimatedWaitTime: job.estimatedWaitTime,
@@ -440,7 +431,6 @@ export const getMarketIntel = async (req, res) => {
     const { id } = req.params;
     const { website } = req.body; 
     try {
-        const PYTHON_URL = `http://localhost:${process.env.PYTHON_PORT || 3002}`;
         const targetWebsite = website || '';
         const normalizedWeb = normalizeUrl(targetWebsite);
         
@@ -450,9 +440,9 @@ export const getMarketIntel = async (req, res) => {
         console.log(`   Website Normalizado: ${normalizedWeb}`);
 
         // 1. Tentar busca ultra-robusta na BD local (PostgreSQL/SQLite)
-        let dbResult = await getAnalysisFromSupabase(targetWebsite);
+        let dbResult = await getAnalysisByWebsite(targetWebsite);
         if (!dbResult.success && normalizedWeb) {
-            dbResult = await getAnalysisFromSupabase(normalizedWeb);
+            dbResult = await getAnalysisByWebsite(normalizedWeb);
         }
         
         let leadResult = dbResult.success ? dbResult.raw : null;
@@ -468,7 +458,7 @@ export const getMarketIntel = async (req, res) => {
                     query = 'SELECT * FROM lead_analyses WHERE id = $1';
                     params = [id];
                 } else {
-                    query = 'SELECT * FROM lead_analyses WHERE id::text = $1 OR id::text LIKE $2';
+                    query = 'SELECT * FROM lead_analyses WHERE CAST(id AS TEXT) = $1 OR CAST(id AS TEXT) LIKE $2';
                     params = [id, `%${id}%`];
                 }
                 const localRes = await db.query(query, params);
@@ -506,7 +496,9 @@ export const getMarketIntel = async (req, res) => {
         console.log(`   🚀 Acionando Inteligência de Mercado (Multi-Agente)...`);
         
         const { getMarketIntelMultiAgent } = await import('../services/python-bridge.js');
-        const agentResult = await getMarketIntelMultiAgent(name, city, sector, finalUrl);
+        const { buildAuditContextFromAnalysis } = await import('../utils/audit-context.js');
+        const auditContext = buildAuditContextFromAnalysis(lead, fullAnalysisObj);
+        const agentResult = await getMarketIntelMultiAgent(name, city, sector, finalUrl, auditContext);
         
         console.log(`   🤖 Agente Python respondeu: ${agentResult.success ? 'SUCESSO' : 'ERRO'}`);
 
@@ -563,6 +555,11 @@ export const analyzeTester = async (req, res) => {
         const { url, leadData } = req.body;
         if (!url) return res.status(400).json({ success: false, error: 'URL é obrigatória' });
 
+        const urlCheck = await assertPublicHttpUrl(url);
+        if (!urlCheck.ok) {
+            return res.status(400).json({ success: false, error: urlCheck.error });
+        }
+
         const normalizedUrl = normalizeUrl(url);
         console.log(`🚀 [Tester] Starting Synchronous Live Audit for: ${normalizedUrl}`);
 
@@ -586,12 +583,14 @@ export const analyzeTester = async (req, res) => {
         const sector = (analysis.qScore && analysis.qScore.sector) || analysis.sector || 'Negócios';
 
         const { getMarketIntelMultiAgent } = await import('../services/python-bridge.js');
-        const intel = await getMarketIntelMultiAgent(name, city, sector, normalizedUrl);
+        const { buildAuditContextFromAnalysis } = await import('../utils/audit-context.js');
+        const auditContext = buildAuditContextFromAnalysis({}, analysis);
+        const intel = await getMarketIntelMultiAgent(name, city, sector, normalizedUrl, auditContext);
         
         if (intel.success) {
             analysis.agent_intel = intel.intel;
             // Persist intel in DB so LeadDrawer can see it
-            await supabase
+            await db
                 .from('lead_analyses')
                 .update({ agent_intel: intel.intel })
                 .ilike('lead_website', `%${normalizedUrl}%`);
@@ -707,16 +706,6 @@ export const eraseLead = async (req, res) => {
       console.warn('⚠️ Erro ao apagar na base de dados local:', err.message);
     }
 
-    if (supabase) {
-      try {
-        await supabase.from('leads').delete().or(`lead_website.eq.${rawTarget},lead_website.eq.${normalizedWeb},client_email.eq.${rawTarget}`);
-        await supabase.from('lead_analyses').delete().or(`lead_website.eq.${rawTarget},lead_website.eq.${normalizedWeb}`);
-        await supabase.from('email_sequences').delete().or(`website.eq.${rawTarget},website.eq.${normalizedWeb},email.eq.${rawTarget}`);
-      } catch (err) {
-        console.warn('⚠️ Erro ao apagar no Supabase:', err.message);
-      }
-    }
-
     // 2. Apagar screenshots associados
     try {
       const fs = await import('fs');
@@ -769,6 +758,10 @@ export const unsubscribeLead = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Email ou website é obrigatório para processar o cancelamento.' });
     }
 
+    if (email && !verifyUnsubscribeToken(email, req.query.token || req.body?.token)) {
+      return res.status(403).json({ success: false, error: 'Token de cancelamento inválido ou em falta.' });
+    }
+
     console.log(`🛡️ [Opt-out] Pedido de cancelamento de subscrição para: ${email || website}`);
 
     // Atualizar base de dados local
@@ -814,16 +807,6 @@ export const unsubscribeLead = async (req, res) => {
       }
     } catch (err) {
       console.warn('⚠️ Erro ao atualizar opt-out no DB local:', err.message);
-    }
-
-    // Atualizar no Supabase se ativo
-    if (supabase) {
-      try {
-        if (email) {
-          await supabase.from('leads').update({ is_immune: true, status: 'opt_out' }).ilike('client_email', email);
-          await supabase.from('email_sequences').update({ status: 'cancelled' }).ilike('email', email);
-        }
-      } catch (err) {}
     }
 
     // Invalida cache de leads
@@ -884,7 +867,7 @@ export const unsubscribeLead = async (req, res) => {
 export const cleanupDataRetention = async (req, res) => {
   try {
     const { retentionDays = parseInt(process.env.DATA_RETENTION_DAYS || '365', 10) } = req.body || {};
-    const { deleteOldAnalyses } = await import('../services/supabase-service.js');
+    const { deleteOldAnalyses } = await import('../services/crm-data-service.js');
     const result = await deleteOldAnalyses(retentionDays);
 
     return res.status(200).json({

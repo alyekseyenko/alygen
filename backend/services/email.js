@@ -2,7 +2,8 @@ import axios from 'axios';
 import nodemailer from 'nodemailer';
 import { generateEmailTemplate } from './email-template.js';
 import { createSequence } from './email-sequences.js';
-import { logContact } from './supabase-service.js';
+import { logContact } from './crm-data-service.js';
+import { appendUnsubscribeQuery } from '../utils/unsubscribe-token.js';
 
 // SMTP Connection Pooling Singleton
 let _smtpTransporter = null;
@@ -31,6 +32,21 @@ function getSmtpTransporter() {
 
 export async function sendEmail({ leadId, emailBody, recipient, cc, analysis, leadData, allLeads = [], customSubject, customBody, attachments = [], isHtmlOnly = false }) {
   console.log(`📧 Enviando email para: ${recipient}${cc ? ` (CC: ${cc})` : ''}`);
+
+  try {
+    const db = (await import('./local-db-service.js')).default;
+    const opt = await db.query(
+      `SELECT opt_out, is_immune FROM leads WHERE LOWER(client_email) = LOWER($1) LIMIT 1`,
+      [recipient]
+    );
+    const row = opt?.rows?.[0];
+    if (row && (row.opt_out === 1 || row.opt_out === true || row.is_immune === 1)) {
+      console.warn(`⛔ Email bloqueado (opt-out/imune): ${recipient}`);
+      return { success: false, error: 'Recipient opted out' };
+    }
+  } catch {
+    /* leads table optional */
+  }
 
   let emailContent, emailSubject;
 
@@ -70,7 +86,7 @@ export async function sendEmail({ leadId, emailBody, recipient, cc, analysis, le
       });
 
       const apiHost = process.env.API_HOST || 'http://localhost:3001';
-      const unsubscribeUrl = `${apiHost}/api/unsubscribe?email=${encodeURIComponent(recipient)}`;
+      const unsubscribeUrl = appendUnsubscribeQuery(`${apiHost}/api/unsubscribe`, recipient);
 
       let finalHtml = emailContent;
       if (sequenceResult.success && sequenceResult.data?.id) {

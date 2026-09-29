@@ -1,5 +1,5 @@
 import TelegramBot from 'node-telegram-bot-api';
-import { createClient } from '@supabase/supabase-js';
+import { db } from './db-client.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -8,16 +8,6 @@ import { fileURLToPath } from 'url';
 dotenv.config();
 
 const __dirname2 = path.dirname(fileURLToPath(import.meta.url));
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-
-const supabase = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false
-    }
-});
 
 let bot = null;
 export const getBotStatus = () => bot ? 'Initialized' : 'NULL';
@@ -53,7 +43,7 @@ export function initTelegramBot(options = { polling: true }) {
             
             bot.answerCallbackQuery(callbackQuery.id);
 
-            const { data: log, error } = await supabase.from('automation_logs').select('*').eq('id', logId).single();
+            const { data: log, error } = await db.from('automation_logs').select('*').eq('id', logId).single();
             if (!log || error || log.status !== 'pending_approval') {
                 bot.sendMessage(chatId, '❌ Registro não encontrado ou já processado.');
                 return;
@@ -62,7 +52,7 @@ export function initTelegramBot(options = { polling: true }) {
             const { processCalendlyDecision } = await import('./calendly-service.js');
             await processCalendlyDecision(decision, log.details);
             
-            await supabase.from('automation_logs').update({ status: decision === 'approve' ? 'approved' : 'rejected' }).eq('id', logId);
+            await db.from('automation_logs').update({ status: decision === 'approve' ? 'approved' : 'rejected' }).eq('id', logId);
             
             const emoji = decision === 'approve' ? '✅' : '🛑';
             const label = decision === 'approve' ? 'Aceite' : 'Recusado';
@@ -80,7 +70,7 @@ export function initTelegramBot(options = { polling: true }) {
             bot.answerCallbackQuery(callbackQuery.id);
 
             // Fetch from automation_logs
-            const { data: log, error } = await supabase
+            const { data: log, error } = await db
                 .from('automation_logs')
                 .select('*')
                 .eq('id', logId)
@@ -103,7 +93,7 @@ export function initTelegramBot(options = { polling: true }) {
 
                 if (type === 'seqcancel') {
                     await cancelSequence(sequenceId);
-                    await supabase.from('automation_logs').update({ status: 'rejected' }).eq('id', logId);
+                    await db.from('automation_logs').update({ status: 'rejected' }).eq('id', logId);
                     bot.sendMessage(chatId, `🛑 Sequência CANCELADA para ${log.details.leadName}. Bloqueado D3 e D7.`);
                     bot.editMessageText(msg.text + '\n\n*(🛑 Cancelada - Já Respondeu)*', { chat_id: chatId, message_id: msg.message_id });
                     return;
@@ -123,7 +113,7 @@ export function initTelegramBot(options = { polling: true }) {
                         await updateSequenceStatus(sequenceId, 'followup2', 'followup2_sent_at');
                     }
 
-                    await supabase.from('automation_logs').update({ status: 'approved' }).eq('id', logId);
+                    await db.from('automation_logs').update({ status: 'approved' }).eq('id', logId);
                     bot.sendMessage(chatId, `🚀 Follow-up D${day} enviado com sucesso!`);
                     bot.editMessageText(msg.text + `\n\n*(✅ D${day} Enviado)*`, { chat_id: chatId, message_id: msg.message_id });
                 } catch (e) {
@@ -200,9 +190,9 @@ export function initTelegramBot(options = { polling: true }) {
                      });
                      
                      // Marcar como aprovado no log e atualizar Supabase
-                     await supabase.from('automation_logs').update({ status: 'approved' }).eq('id', logId);
+                     await db.from('automation_logs').update({ status: 'approved' }).eq('id', logId);
                      if (lead.website) {
-                         const { updateLeadEmail } = await import('./supabase-service.js');
+                         const { updateLeadEmail } = await import('./crm-data-service.js');
                          await updateLeadEmail(lead.website, recipient);
                      }
                      bot.sendMessage(chatId, `🚀 Email enviado ao cliente com sucesso!`);
@@ -218,7 +208,7 @@ export function initTelegramBot(options = { polling: true }) {
                 }
             } else {
                 bot.sendMessage(chatId, `🛑 Rejeitado! Email bloqueado para ${log.details.lead.name}.`);
-                await supabase.from('automation_logs').update({ status: 'rejected' }).eq('id', logId);
+                await db.from('automation_logs').update({ status: 'rejected' }).eq('id', logId);
                 
                 // Editar a mensagem original
                 bot.editMessageText(msg.text + '\n\n*(❌ Rejeitado)*', { 
@@ -240,7 +230,7 @@ export async function requestTelegramApproval(lead, analysis, config, recipient,
     try {
         console.log(`📡 [TelegramService] Iniciando pedido de aprovação para ${lead.name}...`);
         // Criar registo de log primeiro para ter o uuid de tracking
-        const { data: insertedLog, error } = await supabase.from('automation_logs').insert([{
+        const { data: insertedLog, error } = await db.from('automation_logs').insert([{
             automation_id: automationId || null, 
             lead_id: lead.id,
             status: 'pending_approval',
@@ -301,7 +291,7 @@ export async function requestSequenceApproval(sequence, day) {
     if (!bot || !chatId) return { success: false };
 
     try {
-        const { data: insertedLog, error } = await supabase.from('automation_logs').insert([{
+        const { data: insertedLog, error } = await db.from('automation_logs').insert([{
             automation_id: null, // Deixar null para evitar erro de Foreign Key
             lead_id: sequence.lead_id,
             status: 'pending_approval',
@@ -357,7 +347,7 @@ export async function sendTelegramWithApproval(message, config) {
         // 1. Tentar gravar na DB para ter o logId (Opcional se falhar)
         let logId = 'manual_' + Date.now();
         try {
-            const { data: insertedLog } = await supabase.from('automation_logs').insert([{
+            const { data: insertedLog } = await db.from('automation_logs').insert([{
                 status: 'pending_approval',
                 details: config.payload
             }]).select('id').single();

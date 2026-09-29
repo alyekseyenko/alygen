@@ -25,6 +25,13 @@ import proposalRoutes from './routes/proposals.routes.js';
 // Services & Middlewares
 import cacheService from './services/cache-service.js';
 import requestIdMiddleware from './middleware/request-id.js';
+import apiAuthMiddleware from './middleware/api-auth.js';
+import jwtOptionalMiddleware from './middleware/jwt-auth.js';
+import auditLogMiddleware from './middleware/audit-log.js';
+import authRoutes from './routes/auth.routes.js';
+import ragRoutes from './routes/rag.routes.js';
+import openapiRoutes from './routes/openapi.routes.js';
+import prospectorRoutes from './routes/prospector.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,7 +61,15 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+    // Sem Origin: healthchecks Docker, curl, proxy interno
+    if (!origin) {
+      return callback(null, true);
+    }
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    const isProd = process.env.NODE_ENV === 'production';
+    if (!isProd) {
       return callback(null, true);
     }
     callback(new Error('Blocked by CORS policy'));
@@ -62,6 +77,9 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
+app.use(jwtOptionalMiddleware);
+app.use(apiAuthMiddleware);
+app.use(auditLogMiddleware);
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 // Global: configurable via environment (default 10k/15min in dev, customizable for production)
@@ -131,6 +149,10 @@ app.use('/api', automationRoutes);
 app.use('/api', systemRoutes);
 app.use('/api', commsRoutes);
 app.use('/api', proposalRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/rag', ragRoutes);
+app.use('/api/prospector', prospectorRoutes);
+app.use('/api', openapiRoutes);
 
 // ─── RGPD Root Alias ─────────────────────────────────────────────────────────
 app.all('/unsubscribe', (req, res) => {
@@ -162,4 +184,11 @@ app.listen(PORT, () => {
   startWorker();
   initTelegramBot();
   startAutomationWorker();
+  import('./services/job-queue.js').then(async ({ startJobQueue }) => {
+    const boss = await startJobQueue();
+    if (boss) {
+      const { registerJobWorkers } = await import('./services/job-workers.js');
+      await registerJobWorkers(boss);
+    }
+  }).catch(() => {});
 });

@@ -1,0 +1,16 @@
+{
+  "allowed_servers": [
+    {
+      "name": "playwright",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "enabled": false
+    },
+    {
+      "name": "duckduckgo",
+      "note": "Fallback nativo via LangChain DuckDuckGoSearchRun quando MCP desativado",
+      "enabled": true
+    }
+  ]
+}

@@ -1,11 +1,11 @@
 import { sendEmail } from './email.js';
 import { sendWhatsApp, isWhatsAppRegistered } from './whatsapp.js';
-import { saveAnalysisToSupabase, getContactsLog } from './supabase-service.js';
+import { saveAnalysis, getContactsLog } from './crm-data-service.js';
 import { listSequences } from './email-sequences.js';
 import { generateEmailTemplate } from './email-template.js';
 import { fetchLeads, appendRowToSheet } from './sheets.js';
 import { generateAIPitch } from './ai-service.js';
-import { supabase } from './supabase-client.js';
+import { db } from './db-client.js';
 import { WorkflowSchema } from '../schemas/automation.schema.js';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -141,7 +141,7 @@ export async function executeWorkflow(automation, lead, analysis, options = {}) 
 export async function resumeWorkflow(stateId) {
     console.log(`🔄 Retomando workflow a partir do estado: ${stateId}`);
     
-    const { data: state, error } = await supabase
+    const { data: state, error } = await db
         .from('automation_states')
         .select('*, automations(*)')
         .eq('id', stateId)
@@ -153,7 +153,7 @@ export async function resumeWorkflow(stateId) {
     }
 
     // Marcar como processando para evitar duplicados
-    await supabase.from('automation_states').update({ status: 'processing' }).eq('id', stateId);
+    await db.from('automation_states').update({ status: 'processing' }).eq('id', stateId);
 
     const automation = state.automations;
     const { lead, analysis, context } = state.context;
@@ -205,7 +205,7 @@ export async function resumeWorkflow(stateId) {
 
         // Se terminou sem entrar noutro wait
         if (!context.isWaiting) {
-            await supabase.from('automation_states').update({ status: 'completed' }).eq('id', stateId);
+            await db.from('automation_states').update({ status: 'completed' }).eq('id', stateId);
             await logAutomation(automation.id, lead, 'success', { 
                 reason: 'Fluxo retomado e concluído',
                 steps: context.steps
@@ -214,7 +214,7 @@ export async function resumeWorkflow(stateId) {
 
     } catch (err) {
         console.error(`❌ Erro ao retomar workflow:`, err.message);
-        await supabase.from('automation_states').update({ status: 'error' }).eq('id', stateId);
+        await db.from('automation_states').update({ status: 'error' }).eq('id', stateId);
     }
 }
 
@@ -329,7 +329,7 @@ async function processNode(node, context, workflow, isDryRun, automation) {
             console.log(`💾 Suspendendo automação. Retoma agendada para: ${resumeAt.toISOString()}`);
 
             try {
-                const { error } = await supabase.from('automation_states').insert([{
+                const { error } = await db.from('automation_states').insert([{
                     automation_id: automation.id,
                     lead_id: lead.id,
                     current_node_id: node.id,
@@ -423,14 +423,15 @@ async function logAutomation(automationId, lead, status, details) {
             leadId = null; // Looks like a website, not a UUID
         }
 
-        const { error } = await supabase.from('automation_logs').insert([{
+        const { error } = await db.from('automation_logs').insert([{
             automation_id: automationId,
-            lead_id: leadId,
+            lead_website: lead?.website || lead?.lead_website || null,
             status,
             details: {
                 ...details,
                 leadName: lead?.name || lead?.company_name || null,
-                leadWebsite: lead?.website || null
+                leadWebsite: lead?.website || lead?.lead_website || null,
+                leadId,
             }
         }]);
 
@@ -440,7 +441,7 @@ async function logAutomation(automationId, lead, status, details) {
         }
         
         if (status === 'success') {
-            await supabase.rpc('increment_automation_count', { automation_uuid: automationId });
+            await db.rpc('increment_automation_count', { automation_uuid: automationId });
         }
     } catch (e) {
         console.error('❌ Erro exception ao gravar log de automação:', e.message);
@@ -468,7 +469,7 @@ export async function runAutomationsForLead(lead, analysis) {
         if (shouldRefresh) {
             console.log('🔄 Atualizando cache de automações e sequências...');
             const [{ data: automations }, { data: sequences }] = await Promise.all([
-                supabase.from('automations').select('*').eq('is_active', true),
+                db.from('automations').select('*').eq('is_active', true),
                 listSequences()
             ]);
             
@@ -540,7 +541,7 @@ export async function runTimedAutomations() {
         console.log('⏰ [TimedTrigger] Verificando automações agendadas...');
         
         // 1. Buscar automações que tenham trigger de tempo ou que sejam 'auto' e devam correr recorrentemente
-        const { data: automations } = await supabase
+        const { data: automations } = await db
             .from('automations')
             .select('*')
             .eq('is_active', true)
@@ -549,7 +550,7 @@ export async function runTimedAutomations() {
         if (!automations || automations.length === 0) return;
 
         // 2. Buscar leads recentes para processar (ex: os últimos 100)
-        const { data: leads } = await supabase
+        const { data: leads } = await db
             .from('lead_analyses')
             .select('*')
             .order('analyzed_at', { ascending: false })
@@ -560,10 +561,16 @@ export async function runTimedAutomations() {
         console.log(`🔄 [TimedTrigger] Processando ${automations.length} automações para ${leads.length} leads...`);
 
         for (const leadData of leads) {
+            if (leadData.is_immune === 1 || leadData.is_immune === true) {
+                continue;
+            }
             let analysis;
             try {
                 analysis = JSON.parse(leadData.full_analysis);
             } catch (e) {
+                continue;
+            }
+            if (analysis?.is_immune) {
                 continue;
             }
             

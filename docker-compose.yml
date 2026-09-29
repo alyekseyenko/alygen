@@ -1,18 +1,45 @@
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: alygen_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - alygen_pg_data:/var/lib/postgresql/data
+    networks:
+      - alygen-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d alygen_crm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend_python:
     build: ./backend_python
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
-      - "3003:3003"
+      - "${PYTHON_HOST_PORT:-3003}:3003"
     environment:
       - PYTHON_PORT=3003
       - PYTHON_HOST=0.0.0.0
+      - ALLOWED_ORIGINS=http://localhost:4000,http://localhost:3001,http://localhost:5173
+      # Dentro do container, localhost ≠ PC — Ollama no host Windows
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
     env_file:
       - ./backend/.env
     volumes:
       - ./backend_python:/app
     networks:
       - alygen-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:3003/health')\" || exit 1"]
       interval: 30s
@@ -28,13 +55,25 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
-      - "3001:3001"
+      - "${BACKEND_HOST_PORT:-3001}:3001"
     environment:
       - PORT=3001
+      - NODE_ENV=production
+      - ALLOWED_ORIGINS=http://localhost:4000,http://localhost:5173
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=postgres
+      - PGPASSWORD=postgres
+      - PGDATABASE=alygen_crm
       - PYTHON_PORT=3003
       - PYTHON_FASTAPI_URL=http://backend_python:3003
       - PYTHON_SERVICE_URL=http://backend_python:3003
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      # Usa crm_local.db montado em /app/data se Postgres ainda não tiver dados migrados
+      - ALLOW_SQLITE_FALLBACK=true
     env_file:
       - ./backend/.env
     volumes:
@@ -45,6 +84,8 @@ services:
     networks:
       - alygen-network
     depends_on:
+      postgres:
+        condition: service_healthy
       backend_python:
         condition: service_started
     healthcheck:
@@ -60,12 +101,16 @@ services:
           memory: 2048M
 
   frontend:
-    build: ./frontend
+    image: alygencrm-frontend-dev
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "${FRONTEND_HOST_PORT:-4000}:4000"
     environment:
-      - VITE_API_URL=http://localhost:3001
+      # Vazio = browser só usa :4000; Vite faz proxy /api → backend (evita CORS e portas cruzadas)
+      - VITE_API_URL=
       - BACKEND_PROXY_URL=http://backend:3001
     volumes:
       - ./frontend:/app
@@ -83,3 +128,6 @@ services:
 networks:
   alygen-network:
     driver: bridge
+
+volumes:
+  alygen_pg_data:

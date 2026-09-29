@@ -1,5 +1,5 @@
 import { fetchLeads } from '../services/sheets.js';
-import { getAllAnalysesMeta } from '../services/supabase-service.js';
+import { getAllAnalysesMeta } from '../services/crm-data-service.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';

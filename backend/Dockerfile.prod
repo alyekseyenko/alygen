@@ -1,0 +1,26 @@
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY package*.json ./
+RUN npm ci --legacy-peer-deps
+COPY . .
+
+FROM node:22-bookworm-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    fonts-freefont-ttf \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+COPY --from=build /app /app
+RUN useradd -m -u 1001 alygen && chown -R alygen:alygen /app
+USER alygen
+EXPOSE 3001
+CMD ["node", "server.js"]

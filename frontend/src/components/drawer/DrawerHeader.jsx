@@ -4,6 +4,7 @@ import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import QScoreGauge from '../gauges/QScoreGauge'
 import { toast } from 'sonner';
+import { api } from '../utils/api';
 
 export default function DrawerHeader({
   lead,
@@ -19,7 +20,7 @@ export default function DrawerHeader({
   const handleToggleImmunity = async () => {
     try {
       const newStatus = !(effectiveAnalysis.is_immune || false);
-      const { data } = await axios.post('http://localhost:3001/api/crm/update', { 
+      const { data } = await api.post('crm/update', { 
         website: lead.website, 
         payload: { is_immune: newStatus } 
       });

@@ -5,7 +5,10 @@ import {
   clearScreenshots,
   createCertificate,
   getCertificateByWebsite,
-  handleCalendly
+  handleCalendly,
+  getAiMetrics,
+  postAiGenerationFeedback,
+  getAnalysisRunById,
 } from '../controllers/system.controller.js';
 import { fullSystemHealthCheck } from '../controllers/health.controller.js';
 import { getPythonStatus } from '../services/python-bridge.js';
@@ -40,6 +43,9 @@ router.get('/health/ready', async (req, res) => {
 });
 
 router.get('/health/full', fullSystemHealthCheck);
+router.get('/system/ai-metrics', getAiMetrics);
+router.post('/system/ai-feedback', postAiGenerationFeedback);
+router.get('/analysis-runs/:id', getAnalysisRunById);
 // Alias for browsers with cached api.js
 router.get('/system/health/full', fullSystemHealthCheck);
 

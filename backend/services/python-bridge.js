@@ -10,6 +10,8 @@ import axios from 'axios';
 import { semanticMemoryService } from './semantic-memory.js';
 import db from './local-db-service.js';
 import { getRequestId } from '../utils/async-context.js';
+import { getPythonFastApiUrl } from '../config/python-url.js';
+import { logMarketIntelTelemetry } from './market-intel-telemetry.js';
 
 // Distributed Tracing: Attach X-Request-Id to all outgoing microservice calls
 axios.interceptors.request.use((config) => {
@@ -20,80 +22,94 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
-const PYTHON_FASTAPI_URL = process.env.PYTHON_FASTAPI_URL || 'http://localhost:3003';
+const PYTHON_FASTAPI_URL = getPythonFastApiUrl();
 const PYTHON_URL = process.env.PYTHON_SERVICE_URL || PYTHON_FASTAPI_URL;
 const PYTHON_ML_URL = process.env.PYTHON_ML_URL || PYTHON_FASTAPI_URL;
 const PYTHON_SCORING_URL = process.env.PYTHON_SCORING_URL || PYTHON_FASTAPI_URL;
-const TIMEOUT_MS = 3000; 
+const TIMEOUT_MS = 3000;
+
+export function pythonAuthHeaders() {
+  const headers = {};
+  const key = process.env.ALYGEN_API_KEY;
+  if (key) headers['X-API-Key'] = key;
+  return headers;
+}
+
+function pyAxiosConfig(extra = {}) {
+  return {
+    ...extra,
+    headers: { ...pythonAuthHeaders(), ...(extra.headers || {}) },
+  };
+}
 
 let pythonAvailable = null;
 let mlAvailable = null;
 let scoringAvailable = null;
 let fastApiAvailable = null;
-let lastCheckTime   = 0;
+const healthCheckAt = { fast: 0, python: 0, ml: 0, scoring: 0 };
 const CHECK_INTERVAL = 30_000; 
 
 /**
  * Verificar se o microserviço Python está online.
  * Faz cache do resultado por 30s para não sobrecarregar.
  */
-async function isFastApiAvailable() {
+export async function isFastApiAvailable() {
   const now = Date.now();
-  if (fastApiAvailable !== null && now - lastCheckTime < CHECK_INTERVAL) {
+  if (fastApiAvailable !== null && now - healthCheckAt.fast < CHECK_INTERVAL) {
     return fastApiAvailable;
   }
   try {
-    await axios.get(`${PYTHON_FASTAPI_URL}/health`, { timeout: 1500 });
+    await axios.get(`${PYTHON_FASTAPI_URL}/health`, pyAxiosConfig({ timeout: 1500 }));
     fastApiAvailable = true;
   } catch {
     fastApiAvailable = false;
   }
-  lastCheckTime = now;
+  healthCheckAt.fast = now;
   return fastApiAvailable;
 }
 
 async function isPythonAvailable() {
   const now = Date.now();
-  if (pythonAvailable !== null && now - lastCheckTime < CHECK_INTERVAL) {
+  if (pythonAvailable !== null && now - healthCheckAt.python < CHECK_INTERVAL) {
     return pythonAvailable;
   }
   try {
-    await axios.get(`${PYTHON_URL}/health`, { timeout: 1500 });
+    await axios.get(`${PYTHON_URL}/health`, pyAxiosConfig({ timeout: 1500 }));
     pythonAvailable = true;
   } catch {
     pythonAvailable = false;
   }
-  lastCheckTime = now;
+  healthCheckAt.python = now;
   return pythonAvailable;
 }
 
 async function isMlAvailable() {
   const now = Date.now();
-  if (mlAvailable !== null && now - lastCheckTime < CHECK_INTERVAL) {
+  if (mlAvailable !== null && now - healthCheckAt.ml < CHECK_INTERVAL) {
     return mlAvailable;
   }
   try {
-    await axios.get(`${PYTHON_ML_URL}/health`, { timeout: 1500 });
+    await axios.get(`${PYTHON_ML_URL}/health`, pyAxiosConfig({ timeout: 1500 }));
     mlAvailable = true;
   } catch {
     mlAvailable = false;
   }
-  lastCheckTime = now;
+  healthCheckAt.ml = now;
   return mlAvailable;
 }
 
 async function isScoringAvailable() {
   const now = Date.now();
-  if (scoringAvailable !== null && now - lastCheckTime < CHECK_INTERVAL) {
+  if (scoringAvailable !== null && now - healthCheckAt.scoring < CHECK_INTERVAL) {
     return scoringAvailable;
   }
   try {
-    await axios.get(`${PYTHON_SCORING_URL}/health`, { timeout: 1500 });
+    await axios.get(`${PYTHON_SCORING_URL}/health`, pyAxiosConfig({ timeout: 1500 }));
     scoringAvailable = true;
   } catch {
     scoringAvailable = false;
   }
-  lastCheckTime = now;
+  healthCheckAt.scoring = now;
   return scoringAvailable;
 }
 
@@ -111,8 +127,8 @@ export async function scoreWithPython(analysis, leadData, jsFallback, allLeads =
     try {
       const { data } = await axios.post(
         `${PYTHON_SCORING_URL}/score/single`,
-        { analysis, leadData, allLeads },
-        { timeout: TIMEOUT_MS }
+        { analysis, lead_data: leadData, all_leads: allLeads },
+        pyAxiosConfig({ timeout: TIMEOUT_MS })
       );
       if (data.success && data.qScore) {
         return data.qScore;
@@ -136,15 +152,19 @@ export async function scoreWithPython(analysis, leadData, jsFallback, allLeads =
 export async function scoreBulkWithPython(leads, jsFallback, allLeads = []) {
   if (await isScoringAvailable()) {
     try {
-      const { data } = await axios.post(
-        `${PYTHON_SCORING_URL}/score/bulk`,
-        { leads, allLeads },
-        { timeout: TIMEOUT_MS * 2 }
-      );
-      if (data.success && data.scores) {
-        console.log(`🐍 Python bulk score: ${data.scores.length} leads com Benchmarking`);
-        return data.scores;
+      const scores = [];
+      for (const item of leads) {
+        const analysis = item.analysis || item;
+        const leadData = item.leadData || {};
+        const { data } = await axios.post(
+          `${PYTHON_SCORING_URL}/score/single`,
+          { analysis, lead_data: leadData, all_leads: allLeads },
+          pyAxiosConfig({ timeout: TIMEOUT_MS })
+        );
+        scores.push(data.success && data.qScore ? data.qScore : (jsFallback ? jsFallback(analysis, leadData) : null));
       }
+      console.log(`🐍 Python bulk score: ${scores.length} leads (sequencial via /score/single)`);
+      return scores;
     } catch (err) {
       console.warn('⚠️ Python bulk score falhou, usando JS:', err.message);
       scoringAvailable = false;
@@ -168,12 +188,13 @@ export async function accessibilityWithPython(html, url, jsFallback) {
     try {
       const { data } = await axios.post(
         `${PYTHON_SCORING_URL}/accessibility/analyze`,
-        { html, url },
-        { timeout: TIMEOUT_MS }
+        { html_content: html },
+        pyAxiosConfig({ timeout: TIMEOUT_MS })
       );
-      if (data.success && typeof data.score === 'number') {
-        console.log(`🐍 Python acessibilidade: ${url} → ${data.score}/100`);
-        return data;
+      const payload = data.result || data;
+      if (data.success && typeof payload.score === 'number') {
+        console.log(`🐍 Python acessibilidade: ${url} → ${payload.score}/100`);
+        return { ...payload, success: true };
       }
     } catch (err) {
       console.warn('⚠️ Python acessibilidade falhou, usando JS:', err.message);
@@ -197,7 +218,7 @@ export async function mlPredictCloseProbability(leads) {
     const { data } = await axios.post(
       `${PYTHON_ML_URL}/ml/predict`,
       leads,
-      { timeout: TIMEOUT_MS * 4 }
+      pyAxiosConfig({ timeout: TIMEOUT_MS * 4 })
     );
     return data.success ? data.predictions : null;
   } catch (err) {
@@ -221,7 +242,7 @@ export async function mlTrainModel(historicalLeads) {
     const { data } = await axios.post(
       `${PYTHON_ML_URL}/ml/train`,
       historicalLeads,
-      { timeout: 30_000 } // Treino pode demorar mais
+      pyAxiosConfig({ timeout: 30_000 })
     );
     if (data.success) {
       console.log(`✅ Modelo ML treinado com ${data.samples} leads — Accuracy: ${data.accuracy}%`);
@@ -243,7 +264,7 @@ export async function deepScrapeWithPython(url) {
       const { data } = await axios.post(
         `${PYTHON_URL}/scrape/deep`,
         { url },
-        { timeout: 5_000 } // Fail fast se o Playwright ou Python encravar
+        pyAxiosConfig({ timeout: 5_000 })
       );
       if (data.success) {
         console.log(`🐍 Python Deep Scraping: ${url} → ${data.count?.emails} emails, ${data.count?.phones} telefones`);
@@ -272,9 +293,12 @@ export async function analyzeStrategic(text, url) {
     try {
       const { data } = await axios.post(
         `${PYTHON_URL}/analysis/strategic`,
-        { text, url },
-        { timeout: 10_000 }
+        { html_content: text, website: url || '' },
+        pyAxiosConfig({ timeout: 10_000 })
       );
+      if (data.result) {
+        return { success: true, ...data.result };
+      }
       return data;
     } catch (err) {
       console.warn('⚠️ Erro na análise estratégica Python:', err.message);
@@ -296,11 +320,11 @@ export async function generateStrategicPDF(html, filename = 'auditoria-alygen.pd
       const { data } = await axios.post(
         `${PYTHON_URL}/generate/pdf`,
         { html, filename },
-        { 
-          responseType: 'arraybuffer', // Crucial para receber binário
+        pyAxiosConfig({
+          responseType: 'arraybuffer',
           headers: { 'Content-Type': 'application/json' },
-          timeout: 25000 
-        }
+          timeout: 25000,
+        })
       );
       
       console.log(`🐍 Python PDF Generator: ${filename} gerado com sucesso.`);
@@ -310,7 +334,7 @@ export async function generateStrategicPDF(html, filename = 'auditoria-alygen.pd
       throw err;
     }
   }
-  throw new Error('Motor de PDF Python (3002) está offline.');
+  throw new Error('Motor de PDF Python está offline.');
 }
 
 /**
@@ -328,12 +352,13 @@ export async function getGoogleRanking(domain, query, maxResults = 10) {
     try {
       const { data } = await axios.post(
         `${PYTHON_URL}/ranking/google`,
-        { domain, query, maxResults },
-        { timeout: 45_000 } // Playwright pode demorar até 30s
+        { query, target_website: domain },
+        pyAxiosConfig({ timeout: 45_000 })
       );
+      const payload = data.result || data;
       if (data.success) {
-        console.log(`🔎 Google Ranking: ${domain} → ${data.ranking} (query: "${query}")`);
-        return data;
+        console.log(`🔎 Google Ranking: ${domain} → ${payload.ranking || payload.position || 'N/A'} (query: "${query}")`);
+        return { success: true, ...payload };
       }
     } catch (err) {
       console.warn('⚠️ Google Ranking Python falhou:', err.message);
@@ -348,19 +373,28 @@ export async function getGoogleRanking(domain, query, maxResults = 10) {
  * Inteligência de Mercado Multi-Agente (Senior 2026 Engine).
  * Orquestra Researcher, Strategist e Synthesizer em paralelo.
  */
-export async function getMarketIntelMultiAgent(name, city, sector, website) {
-  // 1. Try to fetch from Local Semantic Memory cache first (RAG Layer)
+export async function getMarketIntelMultiAgent(name, city, sector, website, auditContext = null, options = {}) {
+  const traceId = options.traceId || null;
+  let semanticContext = '';
+
+  // 1. Cache: only exact website match (never another company's verdict)
   try {
-    const memoryMatches = await semanticMemoryService.findSimilarIntel(sector, city || 'Portugal');
-    if (memoryMatches && memoryMatches.length > 0) {
-      const match = memoryMatches[0];
-      console.log(`🧠 [RAG Cache] Semantic Match found in database for ${sector} in ${city || 'Portugal'}: using cached intel.`);
+    const own = await semanticMemoryService.findIntelForWebsite(website);
+    if (own?.intel_text) {
+      console.log(`🧠 [Semantic Cache] Hit for same website: ${website}`);
       return {
         success: true,
-        intel: `Com base nas inteligências de mercado locais e semânticas guardadas para ${sector} in ${city || 'Portugal'}:\nIdentificámos que os concorrentes "${match.competitors}" continuam fortes na região. Para se destacar e reverter as dores técnicas detetadas, a empresa deve agir no posicionamento digital de forma imediata.`,
-        source: 'Semantic Cache (RAG)'
+        intel: own.intel_text,
+        competitors: own.competitors
+          ? String(own.competitors).split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
+        source: 'semantic_cache_website',
+        degraded: false,
+        model: 'semantic_cache',
+        trace_id: traceId,
       };
     }
+    semanticContext = await semanticMemoryService.findSectorContext(sector, city || 'Portugal', website);
   } catch (err) {
     console.warn('⚠️ Error querying local semantic memory:', err.message);
   }
@@ -391,25 +425,53 @@ export async function getMarketIntelMultiAgent(name, city, sector, website) {
     console.warn('⚠️ Falha ao cruzar concorrentes internos da base de dados:', dbErr.message);
   }
 
-  const useFastApi = await isFastApiAvailable();
-  const baseUrl = useFastApi ? PYTHON_FASTAPI_URL : PYTHON_URL;
-  
+  if (!(await isFastApiAvailable())) {
+    return { success: false, error: 'Motor FastAPI de inteligência offline' };
+  }
+
+  const competitorSnapshots = options.competitorSnapshots || auditContext?.competitor_snapshots || [];
+
+  const started = Date.now();
   try {
+    const headers = pythonAuthHeaders();
+    if (traceId) headers['X-Trace-Id'] = traceId;
+
     const { data } = await axios.post(
-      `${baseUrl}/agent/market-intel`,
-      { name, city, sector, website, internal_competitors: internalCompetitors },
-      { timeout: 60_000 }
+      `${PYTHON_FASTAPI_URL}/agent/market-intel`,
+      {
+        name,
+        city,
+        sector,
+        website,
+        internal_competitors: internalCompetitors,
+        semantic_context: semanticContext,
+        audit_context: auditContext,
+        competitor_snapshots: competitorSnapshots,
+        trace_id: traceId,
+      },
+      pyAxiosConfig({ timeout: 60_000, headers })
     );
     
-    // 2. Cache the newly generated intelligence inside our Semantic memories in background
-    if (data.success && data.intel) {
+    if (data.success) {
+      logMarketIntelTelemetry({
+        telemetry: data.telemetry || [],
+        traceId: data.trace_id,
+        leadWebsite: website,
+        pipelineDegraded: Boolean(data.degraded),
+        model: data.model,
+      }).catch((err) => console.warn('⚠️ market intel telemetry:', err.message));
+    }
+
+    // Cache successful non-degraded intel (skip heuristic fallback)
+    if (data.success && data.intel && !data.degraded && data.model !== 'static_heuristic_failsafe') {
       semanticMemoryService.saveMemory({
         sector,
         district: city || 'Portugal',
         companyName: name,
         website,
         painPoints: data.pain_points || 'Lacuna de performance técnica',
-        competitors: data.competitors || 'Concorrentes locais'
+        competitors: data.competitors || 'Concorrentes locais',
+        intelText: data.intel,
       }).catch(err => console.warn('⚠️ Background save to semantic memory failed:', err.message));
     }
 

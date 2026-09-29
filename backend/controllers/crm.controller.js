@@ -2,7 +2,7 @@ import {
   getAlygenConfig, 
   saveAlygenConfig, 
   updateLeadCRMData 
-} from '../services/supabase-service.js';
+} from '../services/crm-data-service.js';
 
 export const getCRMConfig = async (req, res) => {
   try {

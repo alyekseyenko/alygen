@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "alygen-crm": {
+      "command": "node",
+      "args": ["mcp/server.js"],
+      "cwd": "backend",
+      "env": {
+        "PGHOST": "localhost",
+        "PGDATABASE": "alygen_crm",
+        "PYTHON_FASTAPI_URL": "http://localhost:3003"
+      }
+    }
+  }
+}

@@ -5,17 +5,24 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
+    "mcp": "node mcp/server.js",
+    "sync:sheets": "node scripts/sync-sheets-to-postgres.js",
+    "migrate:sqlite": "node scripts/migrate-to-postgres.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint eslint.config.js services/llm-client.js services/market-intel-telemetry.js services/audit-enrichment.js services/q-score-calculator.js services/analysis-enqueue.js services/ai-generations.js controllers/system.controller.js tests/llm-client.test.js tests/q-score.test.js tests/q-score-fallback.test.js tests/audit-enrichment.test.js"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
     "@types/node-telegram-bot-api": "^0.64.14",
     "@types/nodemailer": "^7.0.11",
     "@vitest/coverage-v8": "^4.1.2",
+    "eslint": "^9.39.5",
+    "globals": "^17.12.0",
     "nodemon": "^3.1.14",
     "supertest": "^7.2.2",
     "ts-node": "^10.9.2",
@@ -23,8 +30,8 @@
     "vitest": "^4.1.2"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@react-email/components": "^1.0.9",
-    "@supabase/supabase-js": "^2.99.1",
     "axios": "^1.6.2",
     "better-sqlite3": "^13.0.3",
     "cheerio": "^1.0.0-rc.12",
@@ -43,6 +50,7 @@
     "nodemailer": "^6.10.1",
     "openai": "^4.20.1",
     "pg": "^8.23.0",
+    "pg-boss": "^12.35.0",
     "puppeteer": "^21.11.0",
     "qrcode-terminal": "^0.12.0",
     "react": "^19.2.4",

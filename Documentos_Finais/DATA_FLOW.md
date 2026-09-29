@@ -11,7 +11,7 @@ Abaixo a representação visual dos componentes, demonstrando com exatidão a in
 graph TD
     %% Fontes de Dados
     A[n8n Scraper Gratuito] -->|GSheets API| B[(Google Sheets Raw)]
-    B -->|Sincronização| C[(Supabase PostgreSQL)]
+    B -->|Sincronização| C[(PostgreSQL local (Docker + pgvector))]
     
     %% Fila de Processamento
     C -->|Aciona Painel Autopilot| D{Analysis Queue Engine Node.js}
@@ -49,7 +49,7 @@ Todo o funil inicia-se muito antes do CRM abrir, numa infraestrutura passiva.
 
 - **Ator principal:** n8n Workflow alojado externamente (geralmente gerador diário).
 - **Mecânica:** O robot n8n faz scraping de diretórios B2B / Google Maps utilizando *selectors* lógicos para encontrar PMEs recém-criadas ou mal pontuadas no mercado, recolhendo `domain`, `name`, `type`. De seguida, injeta-as passivamente na folha conectada *Google Sheets (Master)*.
-- **Integração CRM:** Pelo lado do CRM (na secção `/sources` e painel de Admin), a script `backend/services/supabase-service.js` transpõe os dados do formato de Excel para um banco de dados Relacional Postgres. A engine valida TLDs inválidos e bloqueia duplicação de registos (Unique Constraint Email/Website).
+- **Integração CRM:** Pelo lado do CRM (na secção `/sources` e painel de Admin), a script `backend/services/Postgres local-service.js` transpõe os dados do formato de Excel para um banco de dados Relacional Postgres. A engine valida TLDs inválidos e bloqueia duplicação de registos (Unique Constraint Email/Website).
 
 ## 🧠 3. O Motor de Queueing & Paralelismo Sensível
 Não varremos sites dos clientes usando força bruta para os servidores deles não nos marcarem como *DDoS Attack*. 

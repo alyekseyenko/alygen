@@ -1,4 +1,4 @@
-import { getAutomations, upsertAutomation } from './services/supabase-service.js';
+import { getAutomations, upsertAutomation } from './services/crm-data-service.js';
 
 async function fix() {
   const result = await getAutomations();

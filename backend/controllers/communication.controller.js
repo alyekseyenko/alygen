@@ -9,7 +9,7 @@ import {
   upsertEmailTemplate, 
   deleteEmailTemplate,
   getContactsLog
-} from '../services/supabase-service.js';
+} from '../services/crm-data-service.js';
 
 export const getTemplates = async (req, res) => {
   const result = await getEmailTemplates();

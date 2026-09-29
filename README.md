@@ -8,6 +8,8 @@
 ![Architecture](https://img.shields.io/badge/architecture-Local--First%20%7C%20Distributed%20Polyglot-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-All%20Rights%20Reserved%20%7C%20Proprietary-blue?style=flat-square)
 
+> **English architecture docs (portfolio):** [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) · [Agents](docs/architecture/AGENTS.md) · [Scoring](docs/architecture/SCORING.md) · [RAG](docs/architecture/RAG_AND_VECTORS.md) · [Security](docs/architecture/SECURITY_AND_COMPLIANCE.md) · [Observability](docs/architecture/OBSERVABILITY_AND_EVALS.md)
+
 > **Alygen CRM (Enterprise Grade)** is a distributed, high-performance lead intelligence, automated technical auditing, and multi-channel outreach engine engineered specifically for the European SMB market. It crawls target domains via sandboxed Chromium instances, executes 12+ technical, accessibility, and GDPR audits, performs ML-driven conversion scoring, and coordinates a multi-agent orchestrator chain to draft localized European Portuguese (PT-PT) proposals delivered seamlessly across Email, WhatsApp, and Telegram.
 
 ---
@@ -63,7 +65,7 @@
 This codebase is designed and maintained according to high-standard enterprise engineering principles:
 
 1. **Local-First Resilient Failsafe (ADR 0001):**
-   - Transparent database failover: if cloud PostgreSQL or Supabase suffers network degradation, queries and writes fall back automatically to local **SQLite in WAL mode** (`PRAGMA journal_mode = WAL`) without throwing 500 errors to end users.
+   - Transparent database failover: if Postgres Docker is unreachable, queries and writes fall back automatically to local **SQLite in WAL mode** (`PRAGMA journal_mode = WAL`) without throwing 500 errors to end users.
 2. **Distributed Tracing & Correlation IDs (ADR 0003):**
    - Every inbound HTTP request receives an `X-Request-Id` UUID v4 header.
    - Handled via Node.js `AsyncLocalStorage`, this trace ID is automatically attached to structured Winston logs and forwarded to downstream Python microservices across the network via an Axios request interceptor.
@@ -114,7 +116,7 @@ flowchart TB
     end
 
     subgraph StorageLayer["💾 Data Persistence & Dual-Tier Failover (ADR 0001)"]
-        PG[("PostgreSQL (Supabase / Local)")]
+        PG[("PostgreSQL local (Docker + pgvector)")]
         SQLite[("Local SQLite WAL Fallback<br/>PRAGMA journal_mode = WAL")]
     end
 
@@ -215,7 +217,8 @@ ALYGEN CRM/
 │   │   ├── seo-analyzer.js              # Meta tags, canonicals, OpenGraph, schema markup
 │   │   ├── sheets.js                    # Google Sheets API two-way synchronization
 │   │   ├── social-media-analyzer.js     # Instagram, Facebook, LinkedIn scraper & profile link extractor
-│   │   ├── supabase-service.js          # Remote database persistence adapter
+│   │   ├── crm-data-service.js            # Postgres persistence (leads, analyses, automations)
+│   │   ├── db-client.js                   # Query-builder adapter over local-client
 │   │   ├── technology-analyzer.js       # CMS, e-commerce, and tracking pixel detector
 │   │   ├── telegram-service.js          # Telegram bot notification dispatcher
 │   │   ├── whatsapp.js                  # WhatsApp Web JS client with QR auth & session keeper
@@ -279,9 +282,6 @@ ALYGEN CRM/
 ├── data/                                # Persistent Runtime Data
 │   ├── cache/                           # Scraped metadata and HTML cache
 │   └── whatsapp-session/                # Persistent WhatsApp Web authentication tokens
-│
-└── supabase/                            # Supabase Cloud Database Configuration
-    └── config.toml                      # Supabase local and remote CLI configuration
 ```
 
 ---
@@ -430,20 +430,15 @@ The backend orchestrator (`server.js`) automatically initializes 5 persistent ba
 To prevent data loss and ensure uninterrupted operation, Alygen implements a 3-tier database fallback:
 
 ```
-[ Primary: Local PostgreSQL Pool ]
+[ Primary: PostgreSQL (Docker Compose + pgvector) ]
                │
          (If unreachable)
                ▼
 [ Secondary: Local SQLite WAL (data/crm_local.db) ]
-               │
-       (Cloud Synchronization)
-               ▼
-[ Cloud: Supabase (PostgreSQL + pgvector) ]
 ```
 
-* **Local PostgreSQL:** High-performance primary database for local production runs.
-* **Local SQLite Failsafe (`data/crm_local.db`):** Zero-configuration, file-based database operating in WAL (Write-Ahead Logging) mode. If PostgreSQL is offline, all queries seamlessly route to SQLite without service interruption.
-* **Supabase Integration:** Syncs lead records, audit metrics, and automation states to cloud Supabase for remote team collaboration.
+* **PostgreSQL local:** Fonte única de verdade em produção (`docker compose up postgres`). Migrações em `backend/db/migrations/`.
+* **SQLite failsafe (`data/crm_local.db`):** Fallback em WAL se Postgres estiver offline; rotas continuam sem HTTP 500.
 
 ---
 
@@ -507,6 +502,12 @@ This automatically:
 
 Access the dashboard at: **`http://localhost:4000`**
 
+**Smoke check** (API + Python health, after services are up):
+
+```bash
+node scripts/smoke-check.mjs
+```
+
 ---
 
 ### Manual Step-by-Step Setup
@@ -546,21 +547,39 @@ Open your browser and navigate to **`http://localhost:4000`**.
 
 ---
 
-### Docker Deployment
-You can also spin up the entire ecosystem via Docker Compose:
-```bash
-docker-compose up --build
+### Docker no PC (stack completa)
+
+Guia: **[docs/DOCKER_PC.md](docs/DOCKER_PC.md)**
+
+```powershell
+Copy-Item .env.docker.example .env
+Copy-Item backend\.env.example backend\.env
+.\scripts\docker-pc.ps1
 ```
+
+Abrir **http://localhost:8080** e criar o administrador na primeira visita.
+
+### Docker (modo dev com hot reload)
+
+```bash
+docker compose up --build
+```
+
+UI em **http://localhost:4000**.
 
 ---
 
 ## ⚙️ Environment Configuration (`.env`)
 
 ```ini
-# --- SUPABASE DATABASE ---
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# --- POSTGRES LOCAL ---
+PGHOST=localhost
+PGPORT=5432
+PGUSER=postgres
+PGPASSWORD=postgres
+PGDATABASE=alygen_crm
+JWT_SECRET=
+ALYGEN_API_KEY=
 
 # --- GOOGLE SHEETS INTEGRATION ---
 GOOGLE_SHEETS_ID=your-google-sheets-spreadsheet-id
@@ -645,4 +664,4 @@ npm run check
 * **v7 (Enterprise Grade):** Implementação de RAG (Retrieval-Augmented Generation) para o Orquestrador Multi-Agente. Rotação defensiva de credenciais de API. Integração de `google-credentials.json` via variáveis de ambiente com fallback seguro.
 * **v6 (Conformidade AI Act):** Foco na resiliência e estabilidade da pipeline do Groq Llama-3 com graceful fallback heurístico para períodos offline. Implementação do `AsyncLocalStorage` no Node.js.
 * **v5 (RGPD & Segurança):** Refatoração da anonimização de IPs. Melhorias na conformidade EU AI Act e nas políticas de proteção de dados. Testes End-to-End no ambiente de Opt-Out.
-* **v1-v4 (Fundação Core):** Criação dos Workers Chromium (Puppeteer), Scoring Algorítmico (Q-Score em Python + Numpy), e Integração Inicial com WhatsApp Web, Telegram, e Supabase (Sync Ominicanal).
+* **v1-v4 (Fundação Core):** Criação dos Workers Chromium (Puppeteer), Scoring Algorítmico (Q-Score em Python + Numpy), e Integração Inicial com WhatsApp Web, Telegram, e persistência PostgreSQL.

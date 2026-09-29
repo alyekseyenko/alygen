@@ -1,4 +1,4 @@
-import { updateLeadCRMData } from './services/supabase-service.js';
+import { updateLeadCRMData } from './services/crm-data-service.js';
 
 async function testUpdate() {
   console.log('Testing updateLeadCRMData...');

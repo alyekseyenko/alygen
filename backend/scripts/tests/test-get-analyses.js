@@ -1,4 +1,4 @@
-import { getAllAnalyses } from './services/supabase-service.js';
+import { getAllAnalyses } from './services/crm-data-service.js';
 import dotenv from 'dotenv';
 dotenv.config();
 

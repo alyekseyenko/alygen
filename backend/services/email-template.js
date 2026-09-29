@@ -3,6 +3,7 @@ import {
   Heading, Text, Img, Hr, Button, Link, Preview
 } from '@react-email/components';
 import React, { Fragment } from 'react';
+import { buildUnsubscribeUrl } from '../utils/unsubscribe-url.js';
 const FragmentComponent = Fragment;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -418,7 +419,7 @@ function AlygenEmail({ analysis, leadData, allLeads }) {
             'Legitimate B2B communication based on legitimate interest for technology diagnostics and analytics under the General Data Protection Regulation (GDPR - EU 2016/679) and Law No. 41/2004.'
           ),
           e(Text, { style: { margin: 0, fontSize: '11px', color: '#9ca3af', textAlign: 'center' } },
-            e(Link, { href: `${API_HOST}/api/unsubscribe?email=${encodeURIComponent(leadData?.client_email || leadData?.email || '')}`, style: { color: '#6b7280', textDecoration: 'underline' } }, 'Unsubscribe (Opt-out)'),
+            e(Link, { href: buildUnsubscribeUrl(leadData?.client_email || leadData?.email || ''), style: { color: '#6b7280', textDecoration: 'underline' } }, 'Unsubscribe (Opt-out)'),
             ' · ',
             e(Link, { href: `${COMPANY_WEBSITE}/privacy`, style: { color: '#6b7280', textDecoration: 'underline' } }, 'Privacy Policy & Data Protection')
           )
@@ -662,7 +663,7 @@ function NoWebsiteEmail({ analysis, leadData, clientName, allLeads }) {
             'Comunicação B2B legítima com base no interesse legítimo para diagnóstico e análise tecnológica nos termos do Regulamento Geral sobre a Proteção de Dados (RGPD - UE 2016/679) e da Lei n.º 41/2004.'
           ),
           e(Text, { style: { margin: 0, fontSize: '11px', color: '#9ca3af', textAlign: 'center' } },
-            e(Link, { href: `${API_HOST}/api/unsubscribe?email=${encodeURIComponent(leadData?.client_email || leadData?.email || '')}`, style: { color: '#6b7280', textDecoration: 'underline' } }, 'Cancelar subscrição (Opt-out)'),
+            e(Link, { href: buildUnsubscribeUrl(leadData?.client_email || leadData?.email || ''), style: { color: '#6b7280', textDecoration: 'underline' } }, 'Cancelar subscrição (Opt-out)'),
             ' · ',
             e(Link, { href: `${COMPANY_WEBSITE}/privacy`, style: { color: '#6b7280', textDecoration: 'underline' } }, 'Política de Privacidade e Proteção de Dados')
           )

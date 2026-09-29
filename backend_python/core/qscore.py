@@ -78,12 +78,16 @@ def calculate_qscore(analysis: dict, lead_data: dict = None, all_leads: list = N
     sector = detect_sector(lead_data, analysis)
     
     # 5 métricas normalizadas: performance, seo, security, tracking, conversion
-    perf = float(analysis.get('performanceMobile') or 0.0)
+    perf_raw = analysis.get('performanceMobile')
+    perf = float(perf_raw) if perf_raw is not None else 0.0
     seo = float((analysis.get('seo') or {}).get('score') or 0.0)
     security = float((analysis.get('security') or {}).get('score') or 0.0)
     
     pixel_details = analysis.get('pixelDetails') or {}
-    pixels_count = float(sum(1 for v in pixel_details.values() if v))
+    bool_keys = ('facebook', 'ga4', 'gtm', 'linkedin', 'hotjar', 'tiktok', 'clarity')
+    pixels_count = float(pixel_details.get('totalTracking')
+        if pixel_details.get('totalTracking') is not None
+        else sum(1 for k in bool_keys if pixel_details.get(k)))
     tracking_normalized = min(100.0, (pixels_count / 4.0) * 100.0)
     
     has_cta = 100.0 if analysis.get('hasCTA', False) else 0.0
@@ -102,9 +106,24 @@ def calculate_qscore(analysis: dict, lead_data: dict = None, all_leads: list = N
         penalties += 10.0
     if pixels_count == 0:
         penalties += 10.0
+    if perf_raw is None:
+        penalties += 5.0
+
+    ranking = analysis.get('googleRanking') or {}
+    rank_score = ranking.get('score')
+    if rank_score is not None:
+        rank_score = float(rank_score)
+        if rank_score < 25:
+            penalties += 5.0
+        elif rank_score >= 70:
+            bonus_pre = 3.0
+        else:
+            bonus_pre = 0.0
+    else:
+        bonus_pre = 0.0
         
     # Bónus
-    bonus = 0.0
+    bonus = bonus_pre
     if perf >= 95:
         bonus += 5.0
     if all(m >= 80 for m in [perf, seo, security]):

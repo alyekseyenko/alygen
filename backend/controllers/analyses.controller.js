@@ -1,8 +1,8 @@
 import { 
   getAllAnalyses, 
   getAnalyticsStats, 
-  getAnalysisFromSupabase 
-} from '../services/supabase-service.js';
+  getAnalysisByWebsite as fetchStoredAnalysis 
+} from '../services/crm-data-service.js';
 
 export const listAnalyses = async (req, res) => {
   try {
@@ -54,7 +54,7 @@ export const getStats = async (req, res) => {
 export const getAnalysisByWebsite = async (req, res) => {
   try {
     const website = decodeURIComponent(req.params.website);
-    const result = await getAnalysisFromSupabase(website);
+    const result = await fetchStoredAnalysis(website);
     
     if (result.success) {
       const analysisData = result.data;
@@ -62,11 +62,11 @@ export const getAnalysisByWebsite = async (req, res) => {
         console.log(`⚡ [Self-Healing] Generating missing emailTemplate for ${website}...`);
         try {
           const { generateEmailTemplate } = await import('../services/email-template.js');
-          const { saveAnalysisToSupabase } = await import('../services/supabase-service.js');
+          const { saveAnalysis } = await import('../services/crm-data-service.js');
           const leadData = analysisData.leadData || { name: analysisData.company_name || website, website: website };
           const emailTemplate = await generateEmailTemplate(analysisData, leadData);
           analysisData.emailTemplate = emailTemplate;
-          await saveAnalysisToSupabase(website, analysisData, leadData);
+          await saveAnalysis(leadData, analysisData);
           console.log(`✅ [Self-Healing] emailTemplate successfully saved to DB for ${website}`);
         } catch (genErr) {
           console.error(`❌ [Self-Healing] Failed to generate missing email template:`, genErr);

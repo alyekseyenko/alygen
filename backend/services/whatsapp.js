@@ -1,7 +1,7 @@
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth } = pkg;
 import qrcode from 'qrcode-terminal';
-import { logContact } from './supabase-service.js';
+import { logContact } from './crm-data-service.js';
 
 let client = null;
 let isReady = false;

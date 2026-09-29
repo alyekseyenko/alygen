@@ -3,6 +3,24 @@ import { calculateQScore } from '../utils/qscore'
 import { calculateProjectPrice } from '../utils/pricing'
 import { DEFAULT_ADVANCED } from '../components/LeadFilters'
 
+function leadHasPixel(analysis) {
+  if (!analysis?.pixelDetails) return false
+  const p = analysis.pixelDetails
+  return Boolean(p.facebook || p.ga4 || p.gtm || (p.totalTracking > 0))
+}
+
+function isHighPriority(priority) {
+  if (!priority) return false
+  const p = String(priority).toUpperCase()
+  return ['HIGH', 'CRITICAL', 'ALTA', 'CRÍTICA', 'CRITICA'].includes(p)
+}
+
+function isNoWebsite(analysis) {
+  if (!analysis) return false
+  const cat = String(analysis.category || '').toUpperCase()
+  return analysis.isSocialMediaOnly || cat === 'NO_WEBSITE' || cat === 'SEM_SITE' || cat === 'SEM WEBSITE'
+}
+
 export function useLeadFiltering({
   leads = [],
   search = '',
@@ -51,12 +69,12 @@ export function useLeadFiltering({
 
       if (typeFilter !== 'all' && lead.type?.trim() !== typeFilter) return false
 
-      if (filter === 'no-pixel') return lead.analysis && !lead.analysis.hasPixel
-      if (filter === 'low-performance') return lead.analysis && lead.analysis.performanceScore < 50
-      if (filter === 'high-priority') return ['HIGH', 'CRITICAL'].includes(lead.analysis?.priority)
+      if (filter === 'no-pixel') return lead.analysis && !leadHasPixel(lead.analysis)
+      if (filter === 'low-performance') return lead.analysis && (lead.analysis.performanceMobile ?? 0) < 50
+      if (filter === 'high-priority') return isHighPriority(lead.analysis?.priority)
       if (filter === 'has-email') return lead.analysis?.extractedEmails?.length > 0
       if (filter === 'has-phone') return lead.analysis?.extractedPhones?.length > 0 || !!lead.phone
-      if (filter === 'no-website') return lead.analysis?.category === 'NO_WEBSITE' || lead.analysis?.isSocialMediaOnly
+      if (filter === 'no-website') return isNoWebsite(lead.analysis)
 
       if (hasActiveAdvanced) {
         if (af.analyzed === 'yes' && !lead.analysis) return false
@@ -75,8 +93,8 @@ export function useLeadFiltering({
           if (sec < af.secMin || sec > af.secMax) return false
           if (acc < af.accMin || acc > af.accMax) return false
           if (af.priorities?.length && !af.priorities.includes(lead.analysis.priority)) return false
-          if (af.hasPixel === 'yes' && !lead.analysis.hasPixel) return false
-          if (af.hasPixel === 'no' && lead.analysis.hasPixel) return false
+          if (af.hasPixel === 'yes' && !leadHasPixel(lead.analysis)) return false
+          if (af.hasPixel === 'no' && leadHasPixel(lead.analysis)) return false
           if (af.emailSent === 'yes' && !lead.sequenceStatus) return false
           if (af.emailSent === 'no' && lead.sequenceStatus) return false
         }
@@ -91,9 +109,9 @@ export function useLeadFiltering({
 
   const counts = useMemo(() => ({
     all: leads.length,
-    'no-website': leads.filter(l => l.analysis?.category === 'NO_WEBSITE' || l.analysis?.isSocialMediaOnly).length,
-    'high-priority': leads.filter(l => ['HIGH', 'CRITICAL'].includes(l.analysis?.priority)).length,
-    'no-pixel': leads.filter(l => l.analysis && !l.analysis.hasPixel).length,
+    'no-website': leads.filter(l => isNoWebsite(l.analysis)).length,
+    'high-priority': leads.filter(l => isHighPriority(l.analysis?.priority)).length,
+    'no-pixel': leads.filter(l => l.analysis && !leadHasPixel(l.analysis)).length,
     'has-email': leads.filter(l => l.analysis?.extractedEmails?.length > 0).length,
     'has-phone': leads.filter(l => l.analysis?.extractedPhones?.length > 0 || !!l.phone).length,
   }), [leads])

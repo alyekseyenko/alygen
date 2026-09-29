@@ -6,6 +6,7 @@ Porta: 3003
 
 import os
 import logging
+import asyncio
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Body, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -63,13 +64,32 @@ allowed_origins = [o.strip() for o in allowed_origins_raw.split(",") if o.strip(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins if allowed_origins_raw else ["*"],
-    allow_credentials=True if allowed_origins_raw else False,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 import uuid
+
+def _safe_error_message(exc: Exception) -> str:
+    if os.getenv("NODE_ENV") == "production" or os.getenv("ALYGEN_ENV") == "production":
+        return "Erro interno no motor Python"
+    return str(exc)
+
+@app.middleware("http")
+async def api_key_guard(request: Request, call_next):
+    api_key = os.getenv("ALYGEN_API_KEY")
+    if api_key and request.url.path not in ("/health", "/docs", "/openapi.json", "/redoc"):
+        header_key = request.headers.get("X-API-Key")
+        auth = request.headers.get("Authorization") or ""
+        bearer = auth[7:] if auth.startswith("Bearer ") else None
+        if (header_key or bearer) != api_key:
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "error": "Não autorizado", "code": "UNAUTHORIZED"},
+            )
+    return await call_next(request)
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
@@ -109,12 +129,39 @@ class ScoreBody(BaseModel):
     lead_data: Optional[Dict[str, Any]] = None
     all_leads: Optional[List[Dict[str, Any]]] = None
 
+class AuditEnrichBody(BaseModel):
+    website: str
+    name: Optional[str] = ""
+    city: Optional[str] = "Portugal"
+    sector: Optional[str] = ""
+    html_snippet: Optional[str] = ""
+    metrics: Optional[Dict[str, Any]] = None
+    data_quality: Optional[Dict[str, Any]] = None
+    qscore: Optional[int] = None
+    confidence: Optional[int] = None
+    recover_scrape: bool = False
+    trace_id: Optional[str] = None
+
+
 class IntelBody(BaseModel):
     name: str
     city: str
     sector: str
     website: Optional[str] = None
     internal_competitors: Optional[List[Dict[str, Any]]] = None
+    rag_context: Optional[str] = None
+    audit_context: Optional[Dict[str, Any]] = None
+    semantic_context: Optional[str] = None
+    competitor_snapshots: Optional[List[Dict[str, Any]]] = None
+    trace_id: Optional[str] = None
+
+
+class ProspectBody(BaseModel):
+    sector: str
+    city: str
+    provider: str = "serpapi_maps"
+    min_rating: float = 0
+    min_reviews: int = 0
 
 class ScrapeBody(BaseModel):
     url: str
@@ -145,11 +192,11 @@ async def health(request: Request):
 async def get_score(body: ScoreBody):
     """Calcula o Q-Score utilizando vetorização NumPy."""
     try:
-        result = calculate_qscore(body.analysis, body.lead_data, body.all_leads)
+        result = await asyncio.to_thread(calculate_qscore, body.analysis, body.lead_data, body.all_leads)
         return {"success": True, "result": result, "qScore": result}
     except Exception as e:
         log.error(f"Erro em /score: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error_message(e))
 
 @app.post("/agent/market-intel")
 async def get_market_intel(body: IntelBody, request: Request):
@@ -164,9 +211,69 @@ async def get_market_intel(body: IntelBody, request: Request):
         city=body.city,
         sector=body.sector,
         website=body.website,
-        internal_competitors=body.internal_competitors
+        internal_competitors=body.internal_competitors,
+        audit_context=body.audit_context,
+        semantic_context=body.semantic_context,
+        competitor_snapshots=body.competitor_snapshots,
+        trace_id=body.trace_id or getattr(request.state, "request_id", None),
     )
     return result
+
+
+@app.post("/agent/audit-enrich")
+async def agent_audit_enrich(body: AuditEnrichBody, request: Request):
+    """Extrator/qualificador: defeitos prioritários e gancho comercial (PT-PT)."""
+    from services.audit_enrich import run_audit_enrich
+
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    allowed, msg = cost_guard.check_rate_limit(client_ip)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=msg)
+
+    payload = body.model_dump()
+    result = await run_audit_enrich(payload, recover_scrape=body.recover_scrape)
+    if body.trace_id:
+        result["trace_id"] = body.trace_id
+    return result
+
+
+class LlmChatBody(BaseModel):
+    system: str = ""
+    user: str
+    purpose: str = "copy"
+
+
+@app.post("/llm/chat")
+async def llm_chat(body: LlmChatBody):
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from services.llm_gateway import LlmGateway
+
+    gw = LlmGateway(purpose=body.purpose if body.purpose in ("copy", "reasoning") else "copy")
+    text = await gw.ainvoke([
+        SystemMessage(content=body.system or "You are a helpful assistant."),
+        HumanMessage(content=body.user),
+    ])
+    usage = gw.last_usage or {}
+    return {
+        "success": True,
+        "text": text,
+        "usage": usage,
+        "degraded": bool(usage.get("degraded")),
+    }
+
+
+@app.post("/prospector/campaign")
+async def prospector_campaign(body: ProspectBody):
+    from services.prospector.campaign import run_campaign
+
+    return await run_campaign(
+        sector=body.sector,
+        city=body.city,
+        provider=body.provider,
+        min_rating=body.min_rating,
+        min_reviews=body.min_reviews,
+    )
+
 
 @app.post("/predict")
 @app.post("/ml/predict")
@@ -206,7 +313,7 @@ async def predict_ml(request: Request):
             return {"success": True, "predictions": [formatted], **formatted}
     except Exception as e:
         log.error(f"Erro em /predict: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error_message(e))
 
 @app.post("/ml/train")
 async def train_ml(request: Request):
@@ -224,7 +331,7 @@ async def train_ml(request: Request):
         }
     except Exception as e:
         log.error(f"Erro em /ml/train: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error_message(e))
 
 @app.post("/scrape/deep")
 async def scrape_deep(body: ScrapeBody):
@@ -234,27 +341,27 @@ async def scrape_deep(body: ScrapeBody):
         return result
     except Exception as e:
         log.error(f"Erro em /scrape/deep: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error_message(e))
 
 @app.post("/analysis/strategic")
 async def strategic_nlp(body: StrategicBody):
     """Realiza análise estratégica de Tom de Voz, Fragilidade Digital e Urgência via NLP."""
     try:
-        result = analyze_strategic_nlp(body.html_content, body.website)
+        result = await asyncio.to_thread(analyze_strategic_nlp, body.html_content, body.website)
         return {"success": True, "result": result}
     except Exception as e:
         log.error(f"Erro em /analysis/strategic: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error_message(e))
 
 @app.post("/accessibility/analyze")
 async def accessibility_analyze(body: AccessibilityBody):
     """Análise de acessibilidade WCAG ultra-rápida utilizando Selectolax."""
     try:
-        result = analyze_accessibility_html(body.html_content)
+        result = await asyncio.to_thread(analyze_accessibility_html, body.html_content)
         return {"success": True, "result": result}
     except Exception as e:
         log.error(f"Erro em /accessibility/analyze: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error_message(e))
 
 @app.post("/ranking/google")
 async def google_ranking(body: GoogleRankingBody):
@@ -264,7 +371,7 @@ async def google_ranking(body: GoogleRankingBody):
         return {"success": True, "result": result}
     except Exception as e:
         log.error(f"Erro em /ranking/google: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error_message(e))
 
 @app.post("/generate/pdf")
 async def generate_pdf(lead_data: Dict[str, Any] = Body(...)):
@@ -274,7 +381,7 @@ async def generate_pdf(lead_data: Dict[str, Any] = Body(...)):
         return Response(content=pdf_bytes, media_type="application/pdf")
     except Exception as e:
         log.error(f"Erro em /generate/pdf: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=_safe_error_message(e))
 
 if __name__ == "__main__":
     print(f"[INIT] Alygen FastAPI Engine a iniciar na porta {settings.PYTHON_PORT}...")

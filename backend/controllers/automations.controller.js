@@ -14,7 +14,7 @@ import {
   deleteAutomation, 
   getAutomationLogs,
   getAllAnalyses
-} from '../services/supabase-service.js';
+} from '../services/crm-data-service.js';
 
 // --- SEQUENCES ---
 export const getSequences = async (req, res) => {

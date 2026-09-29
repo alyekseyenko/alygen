@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Users, BarChart3, Mail, Zap, Globe, Search, FileText, Calendar, LayoutGrid, CheckCheck,
-  ChevronLeft, ChevronRight, Menu, Eye, ShieldCheck, Sparkles, Bell
+  ChevronLeft, ChevronRight, Menu, Eye, ShieldCheck, Sparkles, Bell, LogOut
 } from 'lucide-react'
 import NotificationBell from './NotificationBell'
+import { useAuth } from '../context/AuthContext'
 
 export default function Layout({ children }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user, logout, authRequired } = useAuth()
   
   // Collapse sidebar on smaller screens by default, expand on desktop
   const [collapsed, setCollapsed] = useState(false)
@@ -212,12 +214,34 @@ export default function Layout({ children }) {
               </nav>
             </div>
 
-            <div className="pt-4 border-t border-white/[0.04] flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="text-[9px] text-emerald-500 font-bold uppercase tracking-wider">Local DB</span>
+            <div className="pt-4 border-t border-white/[0.04] flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span className="text-[9px] text-emerald-500 font-bold uppercase tracking-wider">Local DB</span>
+                </div>
+                {user && (
+                  <span className="text-[9px] text-white/40 truncate" title={user.email}>
+                    {user.displayName || user.email}
+                  </span>
+                )}
               </div>
-              <span className="text-[9px] text-white/20 font-mono">v2026.09</span>
+              <div className="flex items-center gap-2 shrink-0">
+                {authRequired && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logout()
+                      navigate('/login')
+                    }}
+                    className="p-1.5 rounded-md text-white/30 hover:text-white/70 hover:bg-white/5"
+                    title="Terminar sessão"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <span className="text-[9px] text-white/20 font-mono">v2026.09</span>
+              </div>
             </div>
           </aside>
         </div>

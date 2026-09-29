@@ -522,7 +522,7 @@ export default function App() {
             </div>
             <div className="space-y-2">
               {[
-                { fn: () => { setAnalyzeModal(false); refetch() }, bg: 'green', emoji: '☁️', title: 'Reload from Supabase', desc: 'Sync saved analyses from cloud.' },
+                { fn: () => { setAnalyzeModal(false); refetch() }, bg: 'green', emoji: '🔄', title: 'Recarregar da base', desc: 'Sincronizar análises guardadas no Postgres.' },
                 { fn: () => handleAnalyzeAll('new'), bg: 'orange', emoji: '🔍', title: 'Analyze only new ones', desc: `Use ${sortedLeads.filter(l => !l.analysis).length} quotas.` },
                 { fn: () => handleAnalyzeAll('all'), bg: 'red', emoji: '🔄', title: 'Re-analyze all', desc: `Ignore cache. Use ${sortedLeads.length} quotas.` },
               ].map(({ fn, bg, emoji, title, desc }) => (

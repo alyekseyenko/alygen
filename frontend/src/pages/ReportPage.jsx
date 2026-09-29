@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import axios from 'axios';
+import { api } from '../utils/api';
 import { toast } from 'sonner';
 import { 
   Globe, 
@@ -56,7 +56,7 @@ export default function ReportPage() {
       try {
         setLoading(true);
         const websiteEncoded = encodeURIComponent(website);
-        const response = await axios.get(`http://localhost:3001/api/supabase/analysis/${websiteEncoded}`);
+        const response = await api.get(`analyses/${websiteEncoded}`);
         if (response.data && response.data.success) {
           setAnalysis(response.data.data);
         } else {
