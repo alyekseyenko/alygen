@@ -4,6 +4,8 @@ import {
   saveAnalysis,
   getAnalysisByWebsite,
   getCompetitiveLeadsMeta,
+  getEffectiveAuditPhase,
+  hasMeaningfulAudit,
 } from './crm-data-service.js';
 import { generateMultiDeviceMockup } from './mockup-service.js';
 import { generateEmailTemplate } from './email-template.js';
@@ -28,7 +30,7 @@ export async function performFullAnalysis(
   onProgress
 ) {
   const targetPhase = options.phase || 3;
-  const includeIntel = Boolean(options.includeIntel);
+  const includeIntel = options.includeIntel !== false;
   let runId = options.runId;
   let traceId = options.traceId;
 
@@ -58,8 +60,8 @@ export async function performFullAnalysis(
     if (!forceReanalyze) {
       const cached = await getAnalysisByWebsite(url);
       if (cached.success) {
-        const cachedPhase = cached.data?.audit_phase || 3;
-        if (cachedPhase >= targetPhase && !includeIntel) {
+        const cachedPhase = getEffectiveAuditPhase(cached.data, cached.raw);
+        if (cachedPhase >= targetPhase && !includeIntel && hasMeaningfulAudit(cached.data, cached.raw)) {
           if (onProgress) onProgress('Loading cached analysis...');
           cached.data.emailTemplate = await generateEmailTemplate(cached.data, leadData, allLeads);
           const leadWithId = {
@@ -122,6 +124,7 @@ export async function performFullAnalysis(
     analysis.traceId = traceId;
     analysis.runId = runId;
 
+    if (onProgress) onProgress('A guardar auditoria e intel de mercado...');
     await appendRunStep(runId, 'save', 'running');
     const saveResult = await saveAnalysis({ ...leadData, website: url }, analysis);
     await appendRunStep(runId, 'save', saveResult.success ? 'completed' : 'failed');

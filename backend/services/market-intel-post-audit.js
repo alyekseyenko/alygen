@@ -65,15 +65,16 @@ export async function runMarketIntelAfterAudit({
     competitors: intel.competitors,
   };
 
+  const emailTemplate = await generateEmailTemplate(full, { ...leadData, website: url, agent_intel: intel.intel }, allLeads);
+  full.emailTemplate = emailTemplate;
+  await appendRunStep(runId, 'email_template', 'completed');
+
   await db.query(
     `UPDATE lead_analyses SET agent_intel = $1, agent_intel_at = NOW(), full_analysis = $2 WHERE lead_website = $3`,
     [intel.intel, JSON.stringify(full), url]
   );
 
   await appendRunStep(runId, 'market_intel', 'completed');
-
-  const emailTemplate = await generateEmailTemplate(full, { ...leadData, website: url, agent_intel: intel.intel }, allLeads);
-  await appendRunStep(runId, 'email_template', 'completed');
 
   return { success: true, intel, emailTemplate, analysis: full };
 }

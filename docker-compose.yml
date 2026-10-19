@@ -72,8 +72,6 @@ services:
       - PYTHON_FASTAPI_URL=http://backend_python:3003
       - PYTHON_SERVICE_URL=http://backend_python:3003
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
-      # Usa crm_local.db montado em /app/data se Postgres ainda não tiver dados migrados
-      - ALLOW_SQLITE_FALLBACK=true
     env_file:
       - ./backend/.env
     volumes:

@@ -1,16 +1,16 @@
 # ADR 0007: In-repo lead discovery (Prospector)
 
 ## Status
-Aceite
+Accepted
 
-## Contexto
-Descoberta de leads dependia de n8n e Google Sheets fora do repositório.
+## Context
+Lead discovery depended on n8n and Google Sheets outside the repository.
 
-## Decisão
-- Módulo `backend_python/services/prospector/` com providers Google Places (New) e SerpAPI Maps.
-- Campanhas persistidas; dedupe por `place_id` / domínio; fila `audit` em pg-boss.
-- Import Sheets permanece opcional para migração.
+## Decision
+- Module `backend_python/services/prospector/` with Google Places (New) and SerpAPI Maps providers.
+- Persisted campaigns; dedupe by `place_id` / domain; `audit` queue via pg-boss.
+- Sheets import remains optional for migration.
 
-## Consequências
-- Chaves `GOOGLE_PLACES_API_KEY` e/ou `SERPAPI_API_KEY` em `.env`.
-- UI de campanhas no frontend (`/prospector` ou integrado no pipeline).
+## Consequences
+- `GOOGLE_PLACES_API_KEY` and/or `SERPAPI_API_KEY` in `.env`.
+- Campaign UI in the frontend (`/prospector` or integrated in the pipeline).

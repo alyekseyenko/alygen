@@ -132,6 +132,29 @@ export async function saveAnalysis(leadData, analysis) {
  */
 const AUDIT_CACHE_TTL_DAYS = parseInt(process.env.AUDIT_CACHE_TTL_DAYS || '30', 10);
 
+/**
+ * CRM-only rows (Sheets sync) have no audit_phase; must not default to phase 3 for cache skips.
+ */
+export function getEffectiveAuditPhase(analysisData, row = null) {
+  if (analysisData && typeof analysisData.audit_phase === 'number') {
+    return analysisData.audit_phase;
+  }
+  const score = Number(analysisData?.qScore?.score ?? row?.qscore ?? 0);
+  if (score > 0) return 3;
+  if (
+    analysisData?.performanceMobile != null ||
+    analysisData?.performanceDesktop != null ||
+    analysisData?.seo?.score > 0
+  ) {
+    return 3;
+  }
+  return 0;
+}
+
+export function hasMeaningfulAudit(analysisData, row = null) {
+  return getEffectiveAuditPhase(analysisData, row) >= 1;
+}
+
 export async function getAnalysisByWebsite(website) {
   try {
     const result = await db.query('SELECT * FROM lead_analyses WHERE lead_website = $1', [website]);
@@ -598,6 +621,10 @@ export async function updateLeadCRMData(website, payload) {
     analysis.latitude = payload.latitude !== undefined ? payload.latitude : (analysis.latitude || row?.latitude || null);
     analysis.longitude = payload.longitude !== undefined ? payload.longitude : (analysis.longitude || row?.longitude || null);
     analysis.sheet_metadata = payload.sheet_metadata !== undefined ? payload.sheet_metadata : (analysis.sheet_metadata || null);
+
+    if (typeof analysis.audit_phase !== 'number') {
+      analysis.audit_phase = hasMeaningfulAudit(analysis, row) ? getEffectiveAuditPhase(analysis, row) : 0;
+    }
 
     const full_analysis = JSON.stringify(analysis);
     const budget_items_str = JSON.stringify(analysis.budget_items);

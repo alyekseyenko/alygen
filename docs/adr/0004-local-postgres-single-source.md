@@ -1,18 +1,18 @@
-# ADR 0004: Postgres local como fonte única de verdade
+# ADR 0004: Local Postgres as single source of truth
 
 ## Status
-Aceite
+Accepted
 
-## Contexto
-O runtime dependia de nomes e SDK legados de cloud Postgres; a persistência real passou para Postgres local com pgvector.
+## Context
+Runtime depended on legacy cloud Postgres names/SDKs; real persistence moved to local Postgres with pgvector.
 
-## Decisão
-- Postgres com pgvector no Docker (`docker compose` / `docker-compose.prod.yml`).
-- Adaptador `backend/db/local-client.js` + `backend/services/db-client.js` para queries estilo builder.
-- Camada de domínio em `backend/services/crm-data-service.js`.
-- Migrações numeradas em `backend/db/migrations/`.
+## Decision
+- Postgres with pgvector in Docker (`docker compose` / `docker-compose.prod.yml`).
+- Adapter `backend/db/local-client.js` + `backend/services/db-client.js` for builder-style queries.
+- Domain layer in `backend/services/crm-data-service.js`.
+- Numbered migrations in `backend/db/migrations/`.
 
-## Consequências
-- Sem Supabase nem `@supabase/supabase-js` no runtime.
-- RAG, filas (`pg-boss`) e CRM partilham a mesma instância Postgres.
-- Fallback SQLite WAL apenas se Postgres estiver indisponível (dev/resiliência).
+## Consequences
+- No Supabase or `@supabase/supabase-js` in runtime.
+- RAG, queues (`pg-boss`), and CRM share one Postgres instance.
+- SQLite WAL fallback only when Postgres is unavailable (dev/resilience; see ADR 0008 for production).

@@ -4,21 +4,21 @@
 Accepted
 
 ## Context
-O processamento de leads no Alygen CRM envolve dois perfis de carga computacional distintos:
-1. Operações I/O-bound: Chamadas a APIs externas, WebSockets, streaming de notificações, agendamento de cron, e agregação de respostas HTTP.
-2. Operações CPU/Data-bound: Cálculos de vetores com NumPy, inferência com scikit-learn (`lead_model.pkl`), processamento de texto e heurísticas de acessibilidade / SEO.
+Lead processing in Alygen CRM has two compute profiles:
+
+1. **I/O-bound:** External APIs, WebSockets, notifications, cron, HTTP aggregation.
+2. **CPU/data-bound:** NumPy vectors, scikit-learn inference (`lead_model.pkl`), text processing, accessibility/SEO heuristics.
 
 ## Decision
-Adotamos uma arquitetura de microsserviços poliglota:
-1. **Node.js (Express ESM) como API Gateway & Orchestrator (Porta 3001):**
-   - Gerencia autenticação, rate limiting, conexões de banco de dados, WebSockets e automação de follow-ups.
-2. **Python Microservices (Flask/FastAPI) como ML & Heuristics Engine (Porta 3002):**
-   - Dedicado ao processamento analítico, inferência de conversão ML e web scraping avançado.
-3. **Resilient Circuit Breaker (Python Bridge):**
-   - O Node.js comunica com o Python via HTTP com timeout estrito (5s). Caso o serviço Python esteja indisponível, o Node.js aciona automaticamente implementações de fallback puras em JavaScript sem quebrar o fluxo do utilizador.
+Polyglot microservices:
+
+1. **Node.js (Express ESM) as API gateway & orchestrator (port 3001):** Auth, rate limiting, database, WebSockets, follow-up automation.
+2. **Python microservices (Flask/FastAPI) as ML & heuristics engine (port 3002+):** Analytics, conversion ML, advanced scraping. Market intel consolidated on FastAPI **3003**.
+3. **Resilient circuit breaker (Python bridge):** Node calls Python over HTTP with strict timeout (~5s). If Python is down, Node uses pure JS fallbacks without breaking the user flow.
 
 ## Consequences
-### Positivas
-- Desacoplamento claro de responsabilidades (*Separation of Concerns*).
-- Aproveitamento do ecossistema de Data Science do Python sem abrir mão da performance de I/O do Node.js.
-- Resiliência total com fallback nativo no Node.js.
+
+### Positive
+- Clear separation of concerns.
+- Python data-science stack without sacrificing Node I/O performance.
+- Resilience with native Node fallbacks.

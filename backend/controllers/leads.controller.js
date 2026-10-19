@@ -1,6 +1,6 @@
 import { fetchLeads } from '../services/sheets.js';
 import { listSequences, markOpened } from '../services/email-sequences.js';
-import { getAllAnalysesMeta, updateLeadEmail, getAnalysisByWebsite } from '../services/crm-data-service.js';
+import { getAllAnalysesMeta, updateLeadEmail, getAnalysisByWebsite, getEffectiveAuditPhase, hasMeaningfulAudit } from '../services/crm-data-service.js';
 import { db } from '../services/db-client.js';
 import axios from 'axios';
 import quotaManager from '../quota-manager.js';
@@ -84,7 +84,9 @@ export const getLeads = async (req, res) => {
       if (!dbResult.success || !dbResult.data) return [];
       
       return dbResult.data.map((item, index) => {
-        const isAnalyzed = item.qscore && parseInt(item.qscore) > 0;
+        const isAnalyzed =
+          Number(item.qScore?.score ?? item.qscore ?? 0) > 0 ||
+          getEffectiveAuditPhase(item, null) >= 1;
         
         const extractedEmail = item.customEmail || 
           (item.extractedEmails && item.extractedEmails[0]) || 
@@ -258,7 +260,9 @@ export const getLeads = async (req, res) => {
         const dbResult = await getAllAnalyses(1000);
         if (dbResult.success && dbResult.data && dbResult.data.length > 0) {
           rawLeads = dbResult.data.map((item, index) => {
-            const isAnalyzed = item.qscore && parseInt(item.qscore) > 0;
+            const isAnalyzed =
+              Number(item.qScore?.score ?? item.qscore ?? 0) > 0 ||
+              getEffectiveAuditPhase(item, null) >= 1;
             return {
               id: index + 100,
               name: item.name || item.lead_name || item.website,
@@ -303,6 +307,9 @@ export const getLeads = async (req, res) => {
 
 export const analyzeLead = async (req, res) => {
   try {
+    const { dbReady } = await import('../services/local-db-service.js');
+    await dbReady;
+
     const { url, leadData, forceReanalyze, phase } = req.body;
     if (!url) return res.status(400).json({ success: false, error: 'URL é obrigatória' });
 
@@ -311,18 +318,22 @@ export const analyzeLead = async (req, res) => {
       return res.status(400).json({ success: false, error: urlCheck.error });
     }
 
-    const { enqueueLeadAnalysis } = await import('../services/analysis-enqueue.js');
-    
+    const phaseNum = Math.max(Number(phase) || 3, 3);
+    const includeIntelFlag = req.body.includeIntel !== false;
+
     // Check if we already have it in Supabase to avoid queueing if not forced
     // (This is a Senior optimization: don't queue what you already have cached)
     if (!forceReanalyze) {
-      const { getAnalysisByWebsite } = await import('../services/crm-data-service.js');
       const cached = await getAnalysisByWebsite(url);
       if (cached.success) {
-        const cachedPhase = cached.data?.audit_phase || 3;
-        const requestedPhase = phase || 3;
-        
-        if (cachedPhase >= requestedPhase) {
+        const cachedPhase = getEffectiveAuditPhase(cached.data, cached.raw);
+        const requestedPhase = phaseNum;
+
+        if (
+          cachedPhase >= requestedPhase &&
+          hasMeaningfulAudit(cached.data, cached.raw) &&
+          (!includeIntelFlag || cached.data?.agent_intel || cached.raw?.agent_intel)
+        ) {
           console.log(`📡 [Cache Hit] Análise encontrada para ${url} (Fase ${cachedPhase} >= Solicitada ${requestedPhase}). Verificando automações...`);
           
           // 🔥 Trigger automations even on cache hit (Controller level)
@@ -352,11 +363,14 @@ export const analyzeLead = async (req, res) => {
       }
     }
 
-    // Add to queue for heavy processing
-    console.log(`🎟️ Adding analysis of ${url} to the Background Queue (Phase ${phase || 3})...`);
+    const { enqueueLeadAnalysis } = await import('../services/analysis-enqueue.js');
+
+    console.log(
+      `🎟️ Adding analysis of ${url} to the Background Queue (Phase ${phaseNum}, intel=${includeIntelFlag})...`
+    );
     const job = await enqueueLeadAnalysis(url, leadData || {}, forceReanalyze, {
-      phase: phase || 3,
-      includeIntel: Boolean(req.body.includeIntel),
+      phase: phaseNum,
+      includeIntel: includeIntelFlag,
     });
 
     return res.json({ 
@@ -372,7 +386,7 @@ export const analyzeLead = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro ao submeter análise para fila:', error);
-    res.status(error.message === 'Daily quota exceeded' ? 429 : 500).json({ 
+    res.status(error.message === 'Daily quota exceeded' || /quota/i.test(error.message) ? 429 : 500).json({ 
       success: false, 
       error: error.message 
     });

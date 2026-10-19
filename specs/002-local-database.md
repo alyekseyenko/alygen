@@ -1,13 +1,13 @@
-# Spec: Base de dados local (Postgres + pgvector)
+# Spec: Local database (Postgres + pgvector)
 
-## Problema
-Eliminar dependência runtime do Supabase; uma fonte de verdade local para CRM, sequências e RAG.
+## Problem
+Remove runtime dependency on Supabase; one local source of truth for CRM, sequences, and RAG.
 
-## Critérios de aceitação
-- Serviço `postgres` no Docker com pgvector.
-- Migrações em `backend/db/migrations/`.
-- Runtime usa `db-client.js` + `crm-data-service.js` sobre `local-client.js`.
-- Tabelas `leads`, `email_sequences`, `lead_events` disponíveis.
+## Acceptance criteria
+- `postgres` service in Docker with pgvector.
+- Migrations in `backend/db/migrations/`.
+- Runtime uses `db-client.js` + `crm-data-service.js` on top of `local-client.js`.
+- Tables `leads`, `email_sequences`, `lead_events` available.
 
-## Métricas
-- Zero chamadas `@supabase/supabase-js` nos serviços de produção.
+## Metrics
+- Zero `@supabase/supabase-js` calls in production services.

@@ -1,29 +1,29 @@
-# Spec 008: Pipeline de análise v2
+# Spec 008: Analysis pipeline v2
 
 ## Problem
-Auditoria e market intel desacoplados; métricas fictícias (defaults 50); cache semântico pode devolver veredicto de outra empresa; múltiplos fetches Chromium; sem `analysis_runs` rastreável.
+Audit and market intel were decoupled; fake metrics (default 50); semantic cache could return another company’s verdict; multiple Chromium fetches; no traceable `analysis_runs`.
 
-## Acceptance criteria (Fases 1–3)
+## Acceptance criteria (phases 1–3)
 
-### Fase 1 — Auditoria fiel
-- `assertPublicHttpUrl` na entrada de `analyzeLead`.
-- Browser pool partilhado para render + pixels (HTML reutilizado por scanners que suportam `html`).
-- Métricas falhadas = `null`; objeto `dataQuality` por domínio; Q-Score com `confidence`.
-- Email template gerado uma vez por ciclo (em `performFullAnalysis` apenas).
-- Contexto competitivo via Postgres (`getCompetitiveLeadsMeta`), não Sheets obrigatório.
-- Cache de auditoria com TTL configurável (`AUDIT_CACHE_TTL_DAYS`, default 30).
+### Phase 1 — Faithful audit
+- `assertPublicHttpUrl` at `analyzeLead` entry.
+- Shared browser pool for render + pixels (HTML reused by scanners that support `html`).
+- Failed metrics = `null`; per-domain `dataQuality` object; Q-Score with `confidence`.
+- Email template generated once per cycle (in `performFullAnalysis` only).
+- Competitive context via Postgres (`getCompetitiveLeadsMeta`), Sheets not required.
+- Audit cache with configurable TTL (`AUDIT_CACHE_TTL_DAYS`, default 30).
 
-### Fase 2 — Agentes ligados
-- Cache semântico: hit direto só mesmo `website`; sector/district só como `semantic_context` para o grafo.
-- `includeIntel` enfileira flag no job audit; após `saveAnalysis`, market-intel com `audit_context` real.
-- Node não envia `rag_context` (Python `build_lead_context_pack` único).
-- Critic passa `critic_reason` ao Synthesizer no rewrite.
-- Researcher inclui `competitor_snapshots` (CRM + opcional light metrics).
+### Phase 2 — Agents wired
+- Semantic cache: direct hit only for same `website`; sector/district only as `semantic_context` for the graph.
+- `includeIntel` enqueues flag on audit job; after `saveAnalysis`, market-intel with real `audit_context`.
+- Node does not send `rag_context` (single Python `build_lead_context_pack`).
+- Critic passes `critic_reason` to Synthesizer on rewrite.
+- Researcher includes `competitor_snapshots` (CRM + optional light metrics).
 
-### Fase 3 — Orquestração
-- Tabela `analysis_runs` (migração 009): steps JSON, status, `trace_id`.
-- `GET /api/analysis-runs/:id` para progresso.
-- `trace_id` propagado para market-intel e `ai_generations`.
+### Phase 3 — Orchestration
+- `analysis_runs` table (migration 009): steps JSON, status, `trace_id`.
+- `GET /api/analysis-runs/:id` for progress.
+- `trace_id` propagated to market-intel and `ai_generations`.
 
-## Non-goals (Fase 4)
-- Multi-page analyzer completo; Google reviews no Q-Score; GDPR banner visual.
+## Non-goals (phase 4)
+- Full multi-page analyzer; Google reviews in Q-Score; visual GDPR banner.

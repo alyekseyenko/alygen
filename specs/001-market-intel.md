@@ -1,18 +1,18 @@
-# Spec: Market Intel Multi-Agente
+# Spec: Multi-agent market intel
 
-## Problema
-Gerar copy B2B em PT-PT com concorrentes reais e gaps técnicos, persistindo em `lead_analyses.agent_intel`.
+## Problem
+Generate B2B copy in PT-PT with real competitors and technical gaps, persisted in `lead_analyses.agent_intel`.
 
-## Critérios de aceitação
-- POST `/api/leads/:id/market-intel` usa FastAPI `3003` exclusivamente.
-- Saída contém campo `intel` (texto PT-PT).
-- Sem nomes de concorrentes inventados no fallback.
-- Gravação local em Postgres/SQLite.
+## Acceptance criteria
+- POST `/api/leads/:id/market-intel` uses FastAPI on port `3003` exclusively.
+- Response includes `intel` (PT-PT text).
+- No invented competitor names in fallback.
+- Persisted locally in Postgres/SQLite.
 
-## Contrato Python
-- Entrada: `{ name, city, sector, website?, internal_competitors? }`
-- Saída: `{ success, intel, competitors[], model }`
+## Python contract
+- Input: `{ name, city, sector, website?, internal_competitors? }`
+- Output: `{ success, intel, competitors[], model }`
 
-## Métricas
-- Latência p95 < 60s
-- Taxa de fallback < 20% com `GROQ_API_KEY` válida
+## Metrics
+- p95 latency < 60s
+- Fallback rate < 20% with a valid `GROQ_API_KEY`

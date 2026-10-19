@@ -120,7 +120,15 @@ export default function App() {
 
   const handleAnalyze = async (lead, force = false) => {
     setAnalyzing(p => ({ ...p, [lead.id]: true }))
-    try { await analyze({ url: lead.website, leadData: lead, forceReanalyze: force, phase: 1 }) }
+    try {
+      await analyze({
+        url: lead.website,
+        leadData: lead,
+        forceReanalyze: force,
+        phase: 3,
+        includeIntel: true,
+      })
+    }
     catch (e) { console.error(e) }
     finally { setAnalyzing(p => ({ ...p, [lead.id]: false })) }
   }

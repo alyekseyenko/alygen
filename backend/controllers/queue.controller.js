@@ -28,11 +28,11 @@ export const getQueueStats = async (req, res) => {
 export const getAnalysisStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { default: analysisQueue } = await import('../analysis-queue.js');
-    const status = analysisQueue.getStatus(parseFloat(id));
-    
+    const { resolveAnalysisJobStatus } = await import('../services/analysis-status-service.js');
+    const status = await resolveAnalysisJobStatus(id);
+
     if (!status) return res.status(404).json({ success: false, error: 'Job não encontrado' });
-    
+
     res.json({ success: true, ...status });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

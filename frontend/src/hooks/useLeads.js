@@ -82,8 +82,8 @@ export function useLeads() {
               delete next[leadWebsite];
               return next;
             });
-            queryClient.invalidateQueries(['leads']);
-            toast.success(`Analysis completed in background: ${leadWebsite}`);
+            await queryClient.invalidateQueries(['leads']);
+            toast.success(`Análise concluída: ${leadWebsite}`);
             resolve(data);
           } else if (data.status === 'failed') {
             clearAll();
@@ -120,19 +120,27 @@ export function useLeads() {
 
   // 4. Mutation to Analyze a Lead (Now via Queue!)
   const analyzeMutation = useMutation({
-     Cecil: true,
-    mutationFn: async ({ url, leadData, forceReanalyze, phase }) => {
-      const { data } = await api.post('/analyze-lead', { url, leadData, forceReanalyze, phase });
+    mutationFn: async ({ url, leadData, forceReanalyze, phase, includeIntel }) => {
+      const { data } = await api.post('/analyze-lead', {
+        url,
+        leadData,
+        forceReanalyze,
+        phase: phase ?? 3,
+        includeIntel: includeIntel !== false,
+      });
       
       // If already in cache, return immediately
       if (data.status === 'completed') return data.data;
       
       // If entered queue, start background polling
-      if (data.jobId) {
-        toast.info(`Analysis added to queue (Position: ${data.positionInRange})`, {
-          description: `Estimated wait: ~${Math.round(data.estimatedWaitMs/1000)}s`
+      if (data.jobId || data.runId) {
+        const pollId = data.jobId || data.runId;
+        toast.info(`Analysis added to queue (Position: ${data.position ?? data.positionInRange ?? '?'})`, {
+          description: data.estimatedWaitTime != null
+            ? `Estimated wait: ~${Math.round(data.estimatedWaitTime / 1000)}s`
+            : undefined,
         });
-        return pollJobStatus(data.jobId, url);
+        return pollJobStatus(pollId, url);
       }
       
       return data.data;

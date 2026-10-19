@@ -11,16 +11,16 @@ export const fullSystemHealthCheck = async (req, res) => {
     try {
         const start = Date.now();
         await db.query('SELECT id FROM lead_analyses LIMIT 1');
-        pushResult('Postgres/SQLite Local', 'pass', 'Base de dados local acessível', Date.now() - start);
+        pushResult('PostgreSQL (pgvector)', 'pass', 'Base de dados local acessível', Date.now() - start);
     } catch (e) {
-        pushResult('Postgres/SQLite Local', 'fail', e.message);
+        pushResult('PostgreSQL (pgvector)', 'fail', e.message);
     }
 
     try {
         const start = Date.now();
         const { getJobQueue } = await import('../services/job-queue.js');
         const boss = getJobQueue();
-        pushResult('Job Queue (pg-boss)', boss ? 'pass' : 'warn', boss ? 'Fila persistente ativa' : 'Modo memória / SQLite', Date.now() - start);
+        pushResult('Job Queue (pg-boss)', boss ? 'pass' : 'warn', boss ? 'Fila persistente ativa' : 'Fila pg-boss não iniciada', Date.now() - start);
     } catch (e) {
         pushResult('Job Queue (pg-boss)', 'warn', e.message);
     }

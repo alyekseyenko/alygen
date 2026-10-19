@@ -1,18 +1,18 @@
 # ADR 0005: LangGraph for market intel
 
 ## Status
-Aceite
+Accepted
 
-## Contexto
-Market intel usava cadeia LCEL manual com prompts YAML formatados antes do template (risco de crash com `{` em dados externos).
+## Context
+Market intel used a manual LCEL chain with YAML prompts formatted before the template (crash risk when external data contains `{`).
 
-## Decisão
-- Orquestração em `backend_python/services/agent_graph.py` com LangGraph `StateGraph`.
-- Nós: Researcher (ferramentas), Strategist, Synthesizer, Critic com no máximo um re-write.
-- Saídas estruturadas Pydantic; texto não confiável delimitado em `<untrusted>`.
-- Fallback explícito com `degraded: true`.
+## Decision
+- Orchestration in `backend_python/services/agent_graph.py` with LangGraph `StateGraph`.
+- Nodes: Researcher (tools), Strategist, Synthesizer, Critic with at most one rewrite.
+- Structured Pydantic outputs; untrusted text wrapped in `<untrusted>`.
+- Explicit fallback with `degraded: true`.
 
-## Consequências
-- Dependência `langgraph` no `requirements.txt`.
-- Remoção progressiva de cópias legadas do orquestrador.
-- Node envia `audit_context` no POST `/agent/market-intel`.
+## Consequences
+- `langgraph` dependency in `requirements.txt`.
+- Progressive removal of legacy orchestrator copies.
+- Node sends `audit_context` on POST `/agent/market-intel`.

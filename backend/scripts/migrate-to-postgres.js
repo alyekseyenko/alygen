@@ -1,3 +1,7 @@
+/**
+ * One-time legacy import from data/crm_local.db → Postgres.
+ * Requires: npm install --no-save better-sqlite3
+ */
 import Database from 'better-sqlite3';
 import pg from 'pg';
 import path from 'path';

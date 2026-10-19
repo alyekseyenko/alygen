@@ -33,7 +33,6 @@
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@react-email/components": "^1.0.9",
     "axios": "^1.6.2",
-    "better-sqlite3": "^13.0.3",
     "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
@@ -59,5 +58,8 @@
     "winston": "^3.19.0",
     "xml2js": "^0.6.2",
     "zod": "^4.6.2"
+  },
+  "overrides": {
+    "proxy-addr": "^2.0.8"
   }
 }

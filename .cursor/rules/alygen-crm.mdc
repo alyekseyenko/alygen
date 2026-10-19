@@ -1,5 +1,5 @@
 ---
-description: Convenções Alygen CRM — PT-PT, Postgres local, agentes FastAPI
+description: Alygen CRM conventions — PT-PT product copy, local Postgres, FastAPI agents
 globs:
   - backend/**/*
   - backend_python/**/*
@@ -9,8 +9,8 @@ alwaysApply: true
 
 # Alygen CRM
 
-- Idioma de produto e copy de agentes: **Português Europeu (PT-PT)**.
-- Base de dados runtime: **Postgres local** (`PGHOST`, pgvector). Sem Supabase.
-- Market intel: único motor em `backend_python/services/agent_orchestration.py` via `PYTHON_FASTAPI_URL`.
-- Antes de features novas: criar ou atualizar ficheiro em `specs/`.
-- Segurança: `ALYGEN_API_KEY` em produção; URLs públicas validadas com `assertPublicHttpUrl`.
+- **Product and agent copy:** European Portuguese (PT-PT). Repository docs (README, specs, ADRs) are English.
+- **Runtime database:** Local Postgres (`PGHOST`, pgvector). No Supabase.
+- **Market intel:** Single engine in `backend_python/services/agent_orchestration.py` via `PYTHON_FASTAPI_URL`.
+- **New features:** Create or update a file under `specs/` first.
+- **Security:** `ALYGEN_API_KEY` in production; validate public URLs with `assertPublicHttpUrl`.

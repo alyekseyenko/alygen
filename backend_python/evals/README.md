@@ -1,8 +1,8 @@
 # Evals — Market Intel
 
-Coloque aqui casos anonimizados (`cases.jsonl`) com:
+Add anonymised cases here (`cases.jsonl`) with:
 - `name`, `city`, `sector`, `website`
-- `expected_contains` (frases obrigatórias)
-- `must_not_contain` (ex.: nomes inventados tipo "Grupo X Regional")
+- `expected_contains` (required phrases)
+- `must_not_contain` (e.g. invented names like "Grupo X Regional")
 
-Correr (futuro): `pytest backend_python/evals/test_market_intel.py`
+Run (when wired): `pytest backend_python/evals/test_market_intel.py`

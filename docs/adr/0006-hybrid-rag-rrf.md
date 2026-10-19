@@ -1,17 +1,17 @@
 # ADR 0006: Hybrid RAG with RRF
 
 ## Status
-Aceite
+Accepted
 
-## Contexto
-RAG usava apenas distância cosine e `ILIKE` sem ranking FTS; sem índice HNSW; embeddings de modelos diferentes na mesma coluna.
+## Context
+RAG used only cosine distance and `ILIKE` without FTS ranking; no HNSW index; different embedding models in the same column.
 
-## Decisão
-- Migração `007_rag_indexes.sql`: HNSW + trigger `tsv`.
-- `hybridSearch`: vector top-k + FTS top-k, fusão RRF (k=60), filtro `embedding_model`.
-- Citações expostas na API e UI.
-- Memória semântica partilha o mesmo cliente de embeddings que RAG ingest.
+## Decision
+- Migration `007_rag_indexes.sql`: HNSW + `tsv` trigger.
+- `hybridSearch`: vector top-k + FTS top-k, RRF fusion (k=60), `embedding_model` filter.
+- Citations exposed in API and UI.
+- Semantic memory shares the same embedding client as RAG ingest.
 
-## Consequências
-- Re-ingest recomendado ao mudar modelo de embedding.
-- Latência de pesquisa alinhada com spec < 500ms para top-5.
+## Consequences
+- Re-ingest recommended when changing embedding model.
+- Search latency aligned with spec < 500ms for top-5.

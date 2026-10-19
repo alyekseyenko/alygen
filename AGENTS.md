@@ -1,55 +1,60 @@
 # Alygen Multi-Agent AI System (AGENTS.md)
 
-**English reference (portfolio):** [docs/architecture/AGENTS.md](docs/architecture/AGENTS.md)
+**Extended reference (portfolio):** [docs/architecture/AGENTS.md](docs/architecture/AGENTS.md) — Prospector, Auditor, Scorer, Copywriter, and eval guardrails.
 
-O Alygen CRM utiliza uma arquitetura **Multi-Agent Orchestrator** para enriquecer a prospeção com inteligência profunda de mercado local.
+Alygen CRM uses a **Multi-Agent Orchestrator** architecture to enrich prospecting with deep local market intelligence.
 
-## 👥 Agentes e Responsabilidades
+**Product copy** (Synthesizer verdicts, proposals, outreach) remains **European Portuguese (PT-PT)**. This document is in English for repository and portfolio readers.
 
-A análise de inteligência de mercado (/agent/market-intel) segue um padrão de cadeia (chain of agents) sequencial assíncrona:
+## 👥 Agents and responsibilities
+
+Market intelligence (`/agent/market-intel`) runs as an asynchronous sequential **chain of agents**:
 
 ```
-[ Lead Website/Metadata ] 
+[ Lead Website/Metadata ]
           │
           ▼
-🕵️ Agente Investigador (Researcher) ──► Pesquisa concorrentes reais locais no DuckDuckGo
+🕵️ Researcher ──► Finds real local competitors via DuckDuckGo
           │
           ▼
-📉 Agente Estrategista (Strategist) ──► Identifica fraquezas, forças e "Hook de Vendas"
+📉 Strategist ──► Identifies weaknesses, strengths, and sales hook
           │
           ▼
-✍️ Agente Sintetizador (Synthesizer) ──► Redige veredicto em Português Europeu
+✍️ Synthesizer ──► Drafts verdict in European Portuguese (PT-PT)
           │
           ▼
-[ Veredicto Persuasivo de Elite ]
+[ Persuasive market-intel verdict ]
 ```
 
-### 1. 🕵️ Agente Investigador (Researcher Agent)
-- **Objetivo:** Encontrar concorrentes diretos reais na área geográfica (cidade/distrito) do lead.
-- **Ferramentas:** DuckDuckGo Search.
-- **Funcionamento:** Pesquisa termos como `"[setor] em [cidade] concorrentes portugal"` excluindo o próprio nome e site do lead para evitar duplicidade.
+### 1. 🕵️ Researcher Agent
+- **Purpose:** Find real direct competitors in the lead’s geographic area (city/district).
+- **Tools:** DuckDuckGo Search.
+- **Behaviour:** Queries terms such as `"[sector] in [city] competitors portugal"`, excluding the lead’s own name and website to avoid self-matches.
 
-### 2. 📉 Agente Estrategista (Strategist Agent)
-- **Objetivo:** Cruzar dados de desempenho técnico obtidos nas auditorias (Lighthouse, SSL, pixels) com dados dos concorrentes detetados.
-- **Funcionamento:** Formula o posicionamento estratégico, destacando o "Content Gap" (lacunas de conteúdo) ou "Technical Gap" (performance inferior) que o lead apresenta frente aos concorrentes reais.
+### 2. 📉 Strategist Agent
+- **Purpose:** Cross audit technical performance (Lighthouse, SSL, pixels) with detected competitor signals.
+- **Behaviour:** Produces strategic positioning, highlighting **content gap** or **technical gap** vs real competitors.
 
-### 3. ✍️ Agente Sintetizador (Synthesizer Agent)
-- **Objetivo:** Transformar dados brutos e análises de mercado em copy persuasiva, humana e direta, em Português Europeu (PT-PT).
-- **Tom de Voz:** Consultor sénior de vendas, direto, elegante e urgente (Voz de Consultoria Estratégica Alygen).
-- **Fórmula:** "Identificámos que [RIVAL A] e [RIVAL B] dominam em [X]. Para superar isto, o/a [NAME] deve [AÇÃO]."
+### 3. ✍️ Synthesizer Agent
+- **Purpose:** Turn raw research and gap analysis into persuasive, human B2B copy in **PT-PT**.
+- **Tone:** Senior sales consultant — direct, polished, urgent (Alygen strategic consulting voice).
+- **Formula (PT-PT output):** “Identificámos que [RIVAL A] e [RIVAL B] dominam em [X]. Para superar isto, o/a [NAME] deve [AÇÃO].”
 
 ---
 
-## Resiliência e fallback
-Se DuckDuckGo ou Groq falharem:
-1. Usar concorrentes internos do CRM (mesma cidade/setor, Q-Score ≥ 50).
-2. Fallback heurístico **sem nomes fictícios** — apenas recomendações setoriais em PT-PT.
-3. Nunca HTTP 500 por falha do agente; responder `{ success: false, error }` ou texto de fallback.
+## Resilience and fallback
+
+If DuckDuckGo or Groq fail:
+
+1. Use internal CRM competitors (same city/sector, Q-Score ≥ 50).
+2. Heuristic fallback **without invented names** — sector-level recommendations only, still in PT-PT for user-facing text.
+3. Never HTTP 500 from agent failure; return `{ success: false, error }` or safe fallback copy.
 
 ## Runtime (2026)
-- **Motor único:** [backend_python/services/agent_orchestration.py](backend_python/services/agent_orchestration.py) em `PYTHON_FASTAPI_URL` (porta 3003).
-- **Dados:** Postgres local + pgvector (`docker compose up postgres`). Runtime Node usa [backend/db/local-client.js](backend/db/local-client.js), não Supabase.
-- **Contexto:** [backend_python/context/context_builder.py](backend_python/context/context_builder.py) + tabelas `documents` / `document_chunks` (migração 004).
-- **Prompts versionados:** [backend_python/prompts/](backend_python/prompts/).
-- **MCP:** servidor CRM em `npm run mcp` ([backend/mcp/server.js](backend/mcp/server.js)); allowlist em [backend_python/config/mcp_servers.json](backend_python/config/mcp_servers.json).
-- **Specs:** cada feature nova em [specs/](specs/) antes do código.
+
+- **Single engine:** [backend_python/services/agent_orchestration.py](backend_python/services/agent_orchestration.py) at `PYTHON_FASTAPI_URL` (port 3003).
+- **Data:** Local Postgres + pgvector (`docker compose up postgres`). Node runtime uses [backend/db/local-client.js](backend/db/local-client.js), not Supabase.
+- **Context:** [backend_python/context/context_builder.py](backend_python/context/context_builder.py) + `documents` / `document_chunks` tables (migration 004).
+- **Versioned prompts:** [backend_python/prompts/](backend_python/prompts/).
+- **MCP:** CRM server via `npm run mcp` ([backend/mcp/server.js](backend/mcp/server.js)); allowlist in [backend_python/config/mcp_servers.json](backend_python/config/mcp_servers.json).
+- **Specs:** add or update a file under [specs/](specs/) before new features.

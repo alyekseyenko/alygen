@@ -150,16 +150,38 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
           setFullAnalysis(analysisData);
           
           // If it is a fast Phase 1 analysis, perform an on-demand background upgrade to Phase 3 AI
-          if (analysisData && (analysisData.audit_phase === 1 || !analysisData.audit_phase)) {
-            console.log('⚡ Starting on-demand upgrade to Phase 3 AI...');
+          const phaseDone =
+            typeof analysisData.audit_phase === 'number'
+              ? analysisData.audit_phase
+              : Number(analysisData.qScore?.score ?? 0) > 0
+                ? 3
+                : 0;
+          if (analysisData && phaseDone < 3) {
+            console.log('⚡ A enfileirar auditoria completa (fase 3 + intel)...');
             const upgradeRes = await api.post('analyze-lead', {
               url: lead.website,
               leadData: lead,
               forceReanalyze: false,
-              phase: 3
+              phase: 3,
+              includeIntel: true,
             });
-            if (upgradeRes.data?.success && upgradeRes.data.data) {
+            if (upgradeRes.data?.status === 'completed' && upgradeRes.data?.data) {
               setFullAnalysis(upgradeRes.data.data);
+            } else if (upgradeRes.data?.jobId || upgradeRes.data?.runId) {
+              const pollId = upgradeRes.data.jobId || upgradeRes.data.runId;
+              for (let i = 0; i < 120; i++) {
+                await new Promise((r) => setTimeout(r, 3000));
+                const st = await api.get(`analysis-status/${pollId}`);
+                if (st.data?.status === 'completed') {
+                  const refreshed = await api.get(`analyses/${websiteEncoded}`);
+                  if (refreshed.data?.success) setFullAnalysis(refreshed.data.data);
+                  break;
+                }
+                if (st.data?.status === 'failed') {
+                  setErrorFull(st.data.error || 'Auditoria falhou');
+                  break;
+                }
+              }
             }
           }
         }
@@ -177,13 +199,12 @@ export default function LeadDrawer({ lead, onClose, onWhatsAppSent, onNoWhatsApp
     }
   }, [lead.website])
 
-  // AUTO-TRIGGER MARKET INTEL (Auto-generate to include in email)
+  // Market intel corre no pipeline analyze-lead (includeIntel); botão manual no drawer se faltar.
   useEffect(() => {
-    if (fullAnalysis && !agentIntel && !loadingIntel && !isNoWebsite) {
-      console.info('Auto-Trigger: Generating Market Intel for professional report...')
-      handleGenerateIntel()
+    if (fullAnalysis?.agent_intel && !agentIntel) {
+      setAgentIntel(fullAnalysis.agent_intel)
     }
-  }, [fullAnalysis, agentIntel])
+  }, [fullAnalysis?.agent_intel])
 
   // ML Prediction — runs after having the complete analysis
   useEffect(() => {

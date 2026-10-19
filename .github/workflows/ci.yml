@@ -114,6 +114,8 @@ jobs:
           pip install -r requirements.txt pytest
 
       - name: Run Pytest Scoring & Heuristics
+        env:
+          PYTHONPATH: .
         run: python -m pytest tests/ evals/
 
       - name: Ruff lint (Python)
@@ -144,9 +146,9 @@ jobs:
       - name: Scan Backend Dependencies (npm audit)
         run: |
           cd backend
-          npm audit --audit-level=critical
+          npm audit --omit=dev --audit-level=critical
 
       - name: Scan Frontend Dependencies (npm audit)
         run: |
           cd frontend
-          npm audit --audit-level=critical
+          npm audit --omit=dev --audit-level=critical

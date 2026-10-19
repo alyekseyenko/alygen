@@ -1,14 +1,14 @@
-# Spec 009: Agente extrator e qualificador de auditoria
+# Spec 009: Audit extractor and qualifier agent
 
 ## Problem
-Scanners determinísticos não priorizam defeitos nem interpretam copy/UX; falhas de scrape deixam leads sem contactos. LLM full market-intel é pesado para cada URL.
+Deterministic scanners do not prioritise defects or interpret copy/UX; scrape failures leave leads without contacts. Full market-intel LLM is too heavy per URL.
 
 ## Acceptance criteria
-- `POST /agent/audit-enrich` (FastAPI): entrada com snippet HTML, métricas, `dataQuality`, Q-Score; saída JSON estruturada (defeitos, prioridade, gancho email).
-- Recovery opcional: se `recover_scrape=true` e HTML curto, `deep_scrape_website` e emails/telefones devolvidos.
-- Node: `shouldRunAuditEnrichment` — Fase 3 e (confidence &lt; 60 OU html/render missing OU zero emails e telefones).
-- Resultado em `analysis.auditEnrichment`; prioridade pode ser elevada se agente sugerir CRITICAL/HIGH.
-- Telemetria em `ai_generations` (`agent_name: audit_enrich`).
+- `POST /agent/audit-enrich` (FastAPI): input with HTML snippet, metrics, `dataQuality`, Q-Score; structured JSON output (defects, priority, email hook).
+- Optional recovery: if `recover_scrape=true` and HTML is short, `deep_scrape_website` returns emails/phones.
+- Node: `shouldRunAuditEnrichment` — phase 3 and (confidence &lt; 60 OR missing html/render OR zero emails and phones).
+- Result in `analysis.auditEnrichment`; priority may be raised if agent suggests CRITICAL/HIGH.
+- Telemetry in `ai_generations` (`agent_name: audit_enrich`).
 
 ## Non-goals
-- Substituir PageSpeed, Q-Score Python ou LangGraph market-intel.
+- Replace PageSpeed, Python Q-Score, or LangGraph market-intel.

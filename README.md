@@ -353,21 +353,21 @@ When an analysis is triggered, the system invokes an asynchronous chain-of-agent
 [ Lead Metadata & Tech Gaps ] 
                │
                ▼
-🕵️ Agente Investigador (Researcher) ──► Real DuckDuckGo localized search for active competitors in Portugal
+🕵️ Researcher ──► Real DuckDuckGo localized search for active competitors in Portugal
                │
                ▼
-📉 Agente Estrategista (Strategist)  ──► Identifies content gaps, technical fragility, and competitive edge
+📉 Strategist  ──► Identifies content gaps, technical fragility, and competitive edge
                │
                ▼
-✍️ Agente Sintetizador (Synthesizer) ──► Synthesizes findings into an urgent, high-converting PT-PT cold pitch
+✍️ Synthesizer ──► Synthesizes findings into an urgent, high-converting PT-PT cold pitch
                │
                ▼
 [ Localized Cold Proposal Delivered ]
 ```
 
-1. **🕵️ Agente Investigador (Researcher Agent):** Queries DuckDuckGo for direct local competitors in the lead's specific sector and municipality (excluding the lead's own domain to ensure zero self-matching).
-2. **📉 Agente Estrategista (Strategist Agent):** Cross-references competitor digital presence against the lead's technical shortcomings (e.g., slow mobile LCP, missing RGPD compliance, absent Meta Pixel).
-3. **✍️ Agente Sintetizador (Synthesizer Agent):** Drafts a compelling sales proposal written in flawless European Portuguese (PT-PT) mirroring the tone of a senior digital consultant.
+1. **🕵️ Researcher Agent:** Queries DuckDuckGo for direct local competitors in the lead's specific sector and municipality (excluding the lead's own domain to ensure zero self-matching).
+2. **📉 Strategist Agent:** Cross-references competitor digital presence against the lead's technical shortcomings (e.g., slow mobile LCP, missing RGPD compliance, absent Meta Pixel).
+3. **✍️ Synthesizer Agent:** Drafts a compelling sales proposal written in flawless European Portuguese (PT-PT) mirroring the tone of a senior digital consultant.
 4. **Resilience & Key Rotation:** Uses a rotating pool of **12 Groq API keys** (`gsk_...`) with automatic failover to the **Google Gemini API**, backed by heuristic offline fallbacks to guarantee 100% uptime.
 
 ---
@@ -437,7 +437,7 @@ To prevent data loss and ensure uninterrupted operation, Alygen implements a 3-t
 [ Secondary: Local SQLite WAL (data/crm_local.db) ]
 ```
 
-* **PostgreSQL local:** Fonte única de verdade em produção (`docker compose up postgres`). Migrações em `backend/db/migrations/`.
+* **Local PostgreSQL:** Single source of truth in production (`docker compose up postgres`). Migrations in `backend/db/migrations/`.
 * **SQLite failsafe (`data/crm_local.db`):** Fallback em WAL se Postgres estiver offline; rotas continuam sem HTTP 500.
 
 ---
@@ -547,9 +547,9 @@ Open your browser and navigate to **`http://localhost:4000`**.
 
 ---
 
-### Docker no PC (stack completa)
+### Docker on PC (full stack)
 
-Guia: **[docs/DOCKER_PC.md](docs/DOCKER_PC.md)**
+Guide: **[docs/DOCKER_PC.md](docs/DOCKER_PC.md)**
 
 ```powershell
 Copy-Item .env.docker.example .env
@@ -658,10 +658,10 @@ npm run check
 
 ---
 
-## 📜 Histórico de Versões / Changelog
+## 📜 Version history / Changelog
 
-* **v8 (Final Staff Engineer Audit):** Unificação de portas Python (FastAPI na porta 3003 exclusiva). Eliminação de portas mortas. Adição de `X-Request-Id` e Distributed Tracing. Correção de bugs de RGPD na "graceful degradation" (SQLite Fallback) garantindo que falhas de tabelas não bloqueiam os Direitos ao Esquecimento e Opt-out. Introdução de Logs baseados em Winston com `maskPII` para conformidade de dados sensíveis. Testes 100% green.
-* **v7 (Enterprise Grade):** Implementação de RAG (Retrieval-Augmented Generation) para o Orquestrador Multi-Agente. Rotação defensiva de credenciais de API. Integração de `google-credentials.json` via variáveis de ambiente com fallback seguro.
-* **v6 (Conformidade AI Act):** Foco na resiliência e estabilidade da pipeline do Groq Llama-3 com graceful fallback heurístico para períodos offline. Implementação do `AsyncLocalStorage` no Node.js.
-* **v5 (RGPD & Segurança):** Refatoração da anonimização de IPs. Melhorias na conformidade EU AI Act e nas políticas de proteção de dados. Testes End-to-End no ambiente de Opt-Out.
-* **v1-v4 (Fundação Core):** Criação dos Workers Chromium (Puppeteer), Scoring Algorítmico (Q-Score em Python + Numpy), e Integração Inicial com WhatsApp Web, Telegram, e persistência PostgreSQL.
+* **v8 (Final Staff Engineer Audit):** Unified Python ports (FastAPI exclusively on 3003). Removed dead ports. Added `X-Request-Id` and distributed tracing. Fixed GDPR bugs in graceful degradation (SQLite fallback) so missing tables do not block right-to-erasure and opt-out. Winston logging with `maskPII` for sensitive data. Tests 100% green.
+* **v7 (Enterprise Grade):** RAG (Retrieval-Augmented Generation) for the multi-agent orchestrator. Defensive API key rotation. `google-credentials.json` via environment variables with safe fallback.
+* **v6 (AI Act compliance):** Groq Llama-3 pipeline resilience with heuristic offline fallback. `AsyncLocalStorage` in Node.js.
+* **v5 (GDPR & security):** IP anonymisation refactor. EU AI Act and data-protection policy improvements. End-to-end opt-out tests.
+* **v1–v4 (Core foundation):** Chromium workers (Puppeteer), algorithmic Q-Score (Python + NumPy), initial WhatsApp Web, Telegram, and PostgreSQL persistence.

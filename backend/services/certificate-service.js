@@ -40,27 +40,28 @@ export async function saveCertificate(certificate) {
     const metricsStr = certificate.metrics ? JSON.stringify(certificate.metrics) : null;
     const fullCertStr = JSON.stringify(certificate);
 
-    db.prepare(`
-      INSERT INTO certificates (
+    await db.query(
+      `INSERT INTO certificates (
         certificate_id, company_name, website, qscore, qgrade, metrics, issued_at, valid_until, full_certificate
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(certificate_id) DO UPDATE SET
-        company_name = excluded.company_name,
-        qscore = excluded.qscore,
-        qgrade = excluded.qgrade,
-        metrics = excluded.metrics,
-        full_certificate = excluded.full_certificate,
-        updated_at = CURRENT_TIMESTAMP
-    `).run(
-      certificate.certificate_id,
-      certificate.company_name,
-      certificate.website,
-      certificate.qscore,
-      certificate.qgrade,
-      metricsStr,
-      certificate.issued_at,
-      certificate.valid_until,
-      fullCertStr
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (certificate_id) DO UPDATE SET
+        company_name = EXCLUDED.company_name,
+        qscore = EXCLUDED.qscore,
+        qgrade = EXCLUDED.qgrade,
+        metrics = EXCLUDED.metrics,
+        full_certificate = EXCLUDED.full_certificate,
+        updated_at = CURRENT_TIMESTAMP`,
+      [
+        certificate.certificate_id,
+        certificate.company_name,
+        certificate.website,
+        certificate.qscore,
+        certificate.qgrade,
+        metricsStr,
+        certificate.issued_at,
+        certificate.valid_until,
+        fullCertStr,
+      ]
     );
 
     console.log(`✅ Certificado ${certificate.certificate_id} salvo na BD Local`);
@@ -76,7 +77,11 @@ export async function saveCertificate(certificate) {
  */
 export async function getCertificate(website) {
   try {
-    const row = db.prepare('SELECT * FROM certificates WHERE website = ? ORDER BY issued_at DESC LIMIT 1').get(website);
+    const result = await db.query(
+      'SELECT * FROM certificates WHERE website = $1 ORDER BY issued_at DESC LIMIT 1',
+      [website]
+    );
+    const row = result.rows?.[0];
     if (!row) {
       return { success: false, error: 'Certificado não encontrado' };
     }
@@ -137,7 +142,11 @@ export async function createCertificate(leadData, analysis) {
 
 export async function verifyCertificate(certificateId) {
   try {
-    const row = db.prepare('SELECT * FROM certificates WHERE certificate_id = ? LIMIT 1').get(certificateId);
+    const result = await db.query(
+      'SELECT * FROM certificates WHERE certificate_id = $1 LIMIT 1',
+      [certificateId]
+    );
+    const row = result.rows?.[0];
     if (!row) {
       return { valid: false, error: 'Certificado não encontrado' };
     }

@@ -1,6 +1,6 @@
 # AI Agents Reference (English)
 
-Product copy remains **European Portuguese (PT-PT)**. Runtime rules: root [AGENTS.md](../../AGENTS.md).
+Product copy remains **European Portuguese (PT-PT)**. Market-intel chain and runtime: root [AGENTS.md](../../AGENTS.md).
 
 ## Prospector
 - **Purpose:** In-repo lead discovery by sector × city.
